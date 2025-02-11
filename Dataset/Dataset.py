@@ -1,52 +1,37 @@
-
+from torch.utils.data import Dataset as DS
 
 class Dataset():
 
-    def __init__(self, fname, ftype=".csv"):
+    def __init__(self, dirname, dataclass = DS, data_splits =  ["train", "val", "test"], ftype=".csv"):
 
-        self.fname = fname 
+        self.dirname = dirname
         self.data = None
-        self.data_splits = ["train","test","val"]
         self.ftype = ftype
-
-        #initis splits to None
-        for split in self.data_splits:
-            setattr(self, split, None)
-        self.init_datasets(self.data_splits)
+        self.data_splits = data_splits
+        self.dataclass = dataclass
 
     def init_datasets(self, sets):
 
         for s in sets:
-            #initializes split functions
-            def lmb(self):
-                # calls load fun i.e. load_train if split is None
-                if getattr(self, s) is None:
-                    getattr(self,f"{s}_load")()
-                # sets data to be loaded dataset
-                self.data = getattr(self, f"{s}_data")
-
-            def lmb_load(self):
-                #calls load function and updates corresponding split
-                setattr(self, f"{s}_data",self.load_data(s))
-
             #dynamically sets functions
-            setattr(self,s, lmb)
-            setattr(self,s, lmb_load)
-    
-    def load_data(self, split):
-        return self.load_file(f"{self.fname}-{split}.{self.ftype}")
+            setattr(self,s, self.dataclass())
     
     def load_file(self, fname):
         pass
 
-class Data():
+class Data(DS):
 
 
-    def __init__(self, data_x, data_y):
+    def __init__(self):
+        
+        self.x = None 
+        self.y = None
 
-        self.x = data_x 
-        self.y = data_y
+    def  __len__(self):
+        pass 
 
+    def __getitem__(self, idx):
+        pass
 
 
 

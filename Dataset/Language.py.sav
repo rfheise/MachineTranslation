@@ -1,0 +1,105 @@
+from .Dataset import Dataset, Data
+import csv 
+import os
+import re
+import fasttext.util
+
+class Tokens():
+    special_toks = ["<SOS>","<EOS>","<UNK>"]
+    def __init__(self):
+        self.toks = {}
+        
+        self.vocab = []
+        self.inv_map = {}
+        self.is_complete = False
+        self.punc = ".?!,;"
+
+    def add_token(self, word, tok_num):
+        
+        self.toks[word] = tok_num
+        self.inv_map[tok_num] = word
+        self.vocab.append(word)
+
+    def get_tok(self, word):
+        pass
+
+        
+
+class Language(Dataset):
+
+    def __init__(self, dirname, inlang="de", outlang="en", own_tokens=False):
+        super().__init__(dirname) 
+        self.inlang = inlang 
+        self.outlang = outlang
+
+    def load_raw(self):
+
+        #tokenize
+        toks_input = self.get_tokens(self.inlang)
+        toks_output = self.get_tokens(self.outlang)
+                
+    def get_fname(self, split):
+        return os.path.join(self.fname, split + ".csv")
+
+    def get_tokens(self,dataset):
+
+
+        fasttext.util.download_model(dataset, if_exists='ignore')
+        ft = fasttext.load_model(f'cc.{dataset}.300.bin')
+        return ft 
+        toks = Tokens()
+        indx = 0
+        if dataset == "output":
+            indx = 1
+        fname = os.path.join(self.fname, f"toks-{dataset}.sav")
+        #check if tokens already processed
+        if os.path.exists(fname) and False:
+            with open(fname, "r") as f:
+                toks = []
+                for line in f:
+                    line = line.strip("\n").split(",")
+                    toks.add_token(line[0], int(line[1]))
+                return toks
+
+        toks = set()
+        with open(self.get_fname("test"),"r") as f:
+            
+            csvreader = csv.reader(f)
+            for row in csvreader:
+                row_toks = self.split_row_by_tokens(row[indx])
+                for tok in row_toks:
+                    if tok not in toks:
+                        toks.add(tok) 
+        toks.discard(",")
+        toks.add("<COMMA>")
+        toks = [*toks, *Tokens.special_toks] 
+        toks.sort()
+        count = 0 
+        with open(fname, "w") as f:
+            for t in toks:
+                f.write(f'{t},{str(count)}\n')
+                count += 1 
+        if os.path.exists(fname) and False:
+            self.get_tokens()
+        else:
+            print("Error:Token File Doens't Exist After Write")
+            exit(1)
+    
+    def split_row_by_tokens(self, line):
+
+        #chatgpt gave me this regex and it appears to work
+        pattern = r"[A-Za-z]+(?:'[A-Za-z]+)?|[0-9]|[^\w\s]"
+        tokens = re.findall(pattern, line)
+        return tokens
+                                
+
+
+
+
+
+if __name__ == "__main__":
+
+    dataset = Language("./translate/Dataset/.raw_data/wmt/eng_to_ger/")
+    dataset.load_raw()
+        
+        
