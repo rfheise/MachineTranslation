@@ -165,12 +165,12 @@ class Transformer(Model):
         self.encoder = None 
         self.decoder = None
     
-    def train(self, dataset, loss):
+    def train(self, dataset, loss, batch_size=1024):
 
         if self.encoder is None:
             self.lazy_init(dataset)
-        dataset.test_load()
-        loader = get_language_loader(dataset.train, batch_size=128)
+        dataset.train_load()
+        loader = get_language_loader(dataset.train, batch_size=batch_size)
 
         for X,Y in tqdm(loader, total=len(loader)):
             

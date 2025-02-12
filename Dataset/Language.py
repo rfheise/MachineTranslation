@@ -9,6 +9,7 @@ import re
 import sqlite3
 import numpy as np
 import pandas as pd 
+import multiprocessing
 
 class Embeddings():
 
@@ -85,9 +86,11 @@ class LanguageData(Data):
         self.conn = None
         self.c = None
         self.flip = flip
-
+        self.pool_size = 12
+        self.pattern = re.compile(r"\w+|[^\w\s]")
     def load_data(self):
         if not os.path.exists(self.db_path):
+            print(self.db_path)
             exit("Dataset not Initialized!!!!")
         if self.conn is None or self.c is None:
             self.conn = sqlite3.connect(self.db_path)
@@ -111,7 +114,6 @@ class LanguageData(Data):
         VALUES (?, ?, ?, ?)
     """, items)
         self.conn.commit()
-        exit()
 
     def init_data(self):
         if not os.path.exists(self.db_path):
@@ -126,31 +128,51 @@ class LanguageData(Data):
                 for row in reader:
                     if len(row) != 2:
                         continue
-                    if counter % 10000 == 0 and len(cache) != 0:
-                        print(counter)
+                    if counter % (10000 * self.pool_size) == 0 and len(cache) != 0:
+                        cache = self.process_cache(cache)
                         self.insert_many(cache)
                         cache = []
-                    in_lang_toks = self.convert_row_to_tensor(row[0], self.inlang)
-                    out_lang_toks = self.convert_row_to_tensor(row[1], self.outlang, counter % 10000 == 0)
-                    cache.append((row[0], in_lang_toks, row[1], out_lang_toks))
+                        print(counter)
+                    cache.append(row)
                     counter += 1
             if len(cache) != 0:
+                cache = self.process_cache(cache)
                 self.insert_many(cache)
             self.conn.close()
             self.conn = None 
             self.c = None
+            
+    
+    def process_cache(self, rows):
 
-    def convert_row_to_tensor(self, row, lang, p = False):
+        cache = []
+        processes = []
+        manager = multiprocessing.Manager()
+        shared_cache = manager.list()
+        for i in range(self.pool_size):
+            start = (len(rows)//self.pool_size + 1) * i 
+            end = (len(rows)//self.pool_size + 1) * (i + 1)
+            p = multiprocessing.Process(target=LanguageData.single_proc, args=(shared_cache, rows[start:end], self.inlang, self.outlang, self.pattern))
+            p.start()
+            processes.append(p)
+        for p in processes:
+            p.join()
+        ret = list(shared_cache)
+        return ret
 
-        pattern = r"\w+|[^\w\s]"
-        toks = ["<SOS>",*re.findall(pattern, row), "<EOS>"]
-        if p:
-            print()
-            print()
-            for i, tok in enumerate(toks):
-                print(f"{tok}:{lang.get_word(lang.get_token(tok))}, ", end="")
-            print()
-            print()
+    @staticmethod
+    def single_proc(q, rows, inlang, outlang, pattern):
+        cache = []
+        for row in rows:
+            in_lang_toks = LanguageData.convert_row_to_tensor(pattern, row[0], inlang)
+            out_lang_toks = LanguageData.convert_row_to_tensor(pattern, row[1], outlang)
+            cache.append((row[0], in_lang_toks, row[1], out_lang_toks))
+        q.extend(cache)
+
+    @staticmethod
+    def convert_row_to_tensor(pattern, row, lang):
+
+        toks = ["<SOS>",pattern.findall(row), "<EOS>"]
         toks = [int(lang.get_token(tok)).to_bytes(4, byteorder='little') for tok in toks]
         tok_bytes = b''.join(toks)
         return tok_bytes

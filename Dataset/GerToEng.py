@@ -18,10 +18,10 @@ class GerToEng(Language):
 if __name__ == "__main__":
 
     dataset = EngToGer()
-    dataset.test_init()
-    print(len(dataset.test))
+    dataset.train_init()
+    print(len(dataset.train))
     d = get_language_loader(dataset.test)
-    for x,y in d:
-        print(f"\n\n{x}\n\n")
+    # for x,y in d:
+    #     print(f"\n\n{x}\n\n")
         
         
