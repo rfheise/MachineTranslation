@@ -183,7 +183,7 @@ class LanguageData(Data):
             return self.convert_to_token_arr(row[2]), self.convert_to_token_arr(row[4])
 
     def convert_to_token_arr(self, row):
-        return torch.tensor(np.frombuffer(row, dtype=np.uint32, count=len(row)//4)).long()
+        return torch.tensor(np.frombuffer(row, dtype=np.int32, count=len(row)//4)).long()
 
     
     def __delete__(self):
