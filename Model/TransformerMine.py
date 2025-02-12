@@ -2,6 +2,7 @@
 from torch import nn
 import torch.nn.functional as F
 import torch
+from .Model import Model
 
 class Attention(nn.Module):
 
@@ -67,3 +68,31 @@ class MultiHeadAttention(nn.Module):
         heads = scores @ V_prime 
 
         return torch.bmm(self.W_o, heads)
+    
+class EncoderBlock(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.block =  nn.Sequential(
+            MultiHeadAttention(),
+            AddNorm(),
+            FFNN(),
+            AddNorm(),
+        )
+
+    def forward(self, X):
+        return self.block(X,X,X)
+
+class Transformer(nn.Module):
+
+    def __init__(self, n):
+        super().__init__()
+        encoder = nn.Sequential(Embedding(), 
+                                PositionalEncoding(),
+                                *[EncoderBlock() for i in range(n)])
+        decoder = nn.Sequential(
+            
+        )
+
+    def forward(self):
+        pass
+

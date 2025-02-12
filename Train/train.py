@@ -1,7 +1,7 @@
 from ..Log import Logger as log
 
 
-def train_model(model, dataset, loss, epoch_start, epoch_end):
+def train_model(model, dataset, loss, epoch_start, epoch_end, metrics=[]):
 
     for epoch in range(epoch_start, epoch_end + 1):
         

@@ -7,11 +7,14 @@ from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 import re
 import sqlite3
+import numpy as np
+import pandas as pd 
 
 class Embeddings():
 
     special_toks = ["<PAD>","<SOS>", "<EOS>", "<UNK>"]
     special_toks_val = {tok: ix for ix, tok in enumerate(special_toks)}
+    embedding_dim = 300
 
     def __init__(self, fname):
         self.fname = fname 
@@ -19,13 +22,15 @@ class Embeddings():
 
     def load_embeddings(self):
 
-        ft_model =  gensim.models.KeyedVectors.load_word2vec_format(self.fname, binary=False, limit=50000)
+        ft_model =  gensim.models.KeyedVectors.load_word2vec_format(self.fname, binary=False, limit=10000)
         self.vocab = [*ft_model.index_to_key]
         self.vocab.sort()
         self.vocab = [*self.special_toks, *self.vocab]
         self.word_to_tok = {word: ix for ix, word in enumerate(self.vocab)}
         self.tok_to_word = {ix: word for ix, word in enumerate(self.vocab)}
-        self.embeddings = torch.tensor(ft_model.vectors)
+        pre_trained = torch.tensor(ft_model.vectors, dtype=torch.float32)
+        random_vectors = torch.randn(len(Embeddings.special_toks), Embeddings.embedding_dim)
+        self.embeddings = torch.cat((random_vectors, pre_trained), dim=0)
 
     def get_token(self, word):
         if word not in self.vocab:
@@ -42,16 +47,20 @@ class Embeddings():
 
 class Language(Dataset):
 
-    def __init__(self, dirname, inlang="de", outlang="en"):
+    def __init__(self, dirname, inlang="de", outlang="en", flip=False):
+        current_file_dir = os.path.split(os.path.abspath(__file__))[0]
+        dirname = os.path.join(current_file_dir,".raw_data", dirname)
         super().__init__(dirname, LanguageData)
-        self.inlang = Embeddings(f"./translate/Dataset/.raw_data/encodings/{inlang}.vec")
-        self.outlang =  Embeddings(f"./translate/Dataset/.raw_data/encodings/{outlang}.vec")
+        self.inlang = Embeddings(os.path.join(current_file_dir,".raw_data", "encodings",inlang+".vec"))
+        self.outlang =  Embeddings(os.path.join(current_file_dir,".raw_data", "encodings",outlang+".vec"))
+        self.flip = flip
         self.init_datasets(self.data_splits) 
+        
     
     def init_datasets(self, sets):
 
         for s in sets:
-            setattr(self,s, LanguageData(self.get_fname(s), self.inlang, self.outlang))
+            setattr(self,s, LanguageData(self.get_fname(s), self.inlang, self.outlang, self.flip))
             def lmbload(s=s):
                 getattr(self,s).load_data()
             def lmbload(s=s):
@@ -66,7 +75,7 @@ class Language(Dataset):
                                 
 class LanguageData(Data):
 
-    def __init__(self, fname, inlang, outlang):
+    def __init__(self, fname, inlang, outlang, flip):
         super().__init__()
         self.fname = fname
         self.inlang = inlang
@@ -75,13 +84,34 @@ class LanguageData(Data):
         self.csv_path = self.fname + '.csv'
         self.conn = None
         self.c = None
-    
+        self.flip = flip
+
     def load_data(self):
         if not os.path.exists(self.db_path):
             exit("Dataset not Initialized!!!!")
         if self.conn is None or self.c is None:
             self.conn = sqlite3.connect(self.db_path)
             self.c = self.conn.cursor()
+
+    def create_sql_table(self):
+
+        self.c.execute("CREATE TABLE IF NOT EXISTS translations (id INTEGER PRIMARY KEY,in_lang_text TEXT NOT NULL,in_lang_bin BLOB,out_lang_text TEXT NOT NULL,out_lang_blob BLOB);")
+        self.conn.commit()
+
+    def insert_one(self,item):
+        self.c.execute("""
+        INSERT INTO translations (in_lang_text, in_lang_bin, out_lang_text, out_lang_blob)
+        VALUES (?, ?, ?, ?)
+    """, item)
+        self.conn.commit()
+
+    def insert_many(self,items):
+        self.c.executemany("""
+        INSERT INTO translations (in_lang_text, in_lang_bin, out_lang_text, out_lang_blob)
+        VALUES (?, ?, ?, ?)
+    """, items)
+        self.conn.commit()
+        exit()
 
     def init_data(self):
         if not os.path.exists(self.db_path):
@@ -109,28 +139,6 @@ class LanguageData(Data):
             self.conn.close()
             self.conn = None 
             self.c = None
-        
-        
-    
-    def create_sql_table(self):
-
-        self.c.execute("CREATE TABLE IF NOT EXISTS translations (id INTEGER PRIMARY KEY,in_lang_text TEXT NOT NULL,in_lang_bin BLOB,out_lang_text TEXT NOT NULL,out_lang_blob BLOB);")
-        self.conn.commit()
-
-    def insert_one(self,item):
-        self.c.execute("""
-        INSERT INTO translations (in_lang_text, in_lang_bin, out_lang_text, out_lang_blob)
-        VALUES (?, ?, ?, ?)
-    """, item)
-        self.conn.commit()
-
-    def insert_many(self,items):
-        self.c.executemany("""
-        INSERT INTO translations (in_lang_text, in_lang_bin, out_lang_text, out_lang_blob)
-        VALUES (?, ?, ?, ?)
-    """, items)
-        self.conn.commit()
-
 
     def convert_row_to_tensor(self, row, lang, p = False):
 
@@ -169,7 +177,14 @@ class LanguageData(Data):
         row = self.c.fetchone()
         
         # Return just the row or process it further if needed
-        return row[1], row[3]
+        if self.flip:
+            return self.convert_to_token_arr(row[4]), self.convert_to_token_arr(row[2])
+        else:
+            return self.convert_to_token_arr(row[2]), self.convert_to_token_arr(row[4])
+
+    def convert_to_token_arr(self, row):
+        return torch.tensor(np.frombuffer(row, dtype=np.uint32, count=len(row)//4)).long()
+
     
     def __delete__(self):
         if self.conn is not None:
@@ -193,13 +208,17 @@ def language_loader_init_fn(worker_id):
         dataset = worker_info.dataset  # Access the dataset object
         dataset.load_data()  # Initialize the SQLite connection
 
+def get_language_loader(dataset, batch_size=128, shuffle=True,num_workers = 4, worker_init_fn=language_loader_init_fn,collate_fn=pad_collate_fn):
+
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,num_workers = num_workers, worker_init_fn=worker_init_fn,collate_fn=collate_fn)
+    return loader
 if __name__ == "__main__":
 
-    dataset = Language("./translate/Dataset/.raw_data/wmt/eng_to_ger/")
-    dataset.train_init()
-    print(len(dataset.train))
-    # d = DataLoader(dataset.test, batch_size=128, shuffle=True,num_workers = 4, worker_init_fn=language_loader_init_fn)
-    # for x,y in d:
-    #     print(f"\n\n{y}\n\n")
+    dataset = Language(os.path.join("wmt","eng_to_ger"))
+    dataset.test_init()
+    print(len(dataset.test))
+    d = get_language_loader(dataset.test)
+    for x,y in d:
+        print(f"\n\n{y}\n\n")
         
         
