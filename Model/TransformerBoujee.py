@@ -55,8 +55,8 @@ class TransformerBoujee(Model):
     
     def train(self, dataset, loss, epoch = 0, batch_size=32):
         
-        dataset.test_init()
-        loader = get_language_loader(dataset.test, batch_size=batch_size, shuffle=True)
+        dataset.train_init()
+        loader = get_language_loader(dataset.train, batch_size=batch_size, shuffle=True)
         self.lazy_init(dataset)
         self.transformer.train()
         l_avg = Avg("Loss")

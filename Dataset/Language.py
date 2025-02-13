@@ -253,12 +253,11 @@ def collate_fn_gen(token_limit):
         items = []
         # print(batch)
         for item in batch:
-            if len(item[0]) + len(item[1]) > token_limit:
+            if len(item[0]) > token_limit or len(item[1]) > token_limit:
                 continue 
             items.append(item)
         batch = items
         xs, ys = zip(*batch)
-        
         # Pad the list of tensors to create a single tensor of shape [batch_size, max_seq_len]
         xs_padded = pad_sequence(xs, batch_first=True, padding_value=Embeddings.special_toks_val["<PAD>"])
         ys_padded = pad_sequence(ys, batch_first=True, padding_value=Embeddings.special_toks_val["<PAD>"])
@@ -280,7 +279,7 @@ def language_loader_init_fn(worker_id):
         dataset = worker_info.dataset  # Access the dataset object
         dataset.load_data()  # Initialize the SQLite connection
 
-def get_language_loader(dataset, token_limit= 500, batch_size=64, shuffle=True,num_workers = 8, worker_init_fn=language_loader_init_fn):
+def get_language_loader(dataset, token_limit= 100, batch_size=64, shuffle=True,num_workers = 8, worker_init_fn=language_loader_init_fn):
     #return DataLoader(dataset, batch_size=batch_size, num_workers = num_workers,shuffle=shuffle, worker_init_fn=worker_init_fn,collate_fn=pad_collate_fn)
     # loader = DataLoader(dataset, sampler=TokenBatchSampler(dataset, token_limit, shuffle), num_workers = num_workers, worker_init_fn=worker_init_fn,collate_fn=collate_fn)
     loader = DataLoader(dataset, batch_size=batch_size, num_workers = num_workers,shuffle=shuffle, worker_init_fn=worker_init_fn,collate_fn=collate_fn_gen(token_limit))

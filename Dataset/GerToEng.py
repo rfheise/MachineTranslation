@@ -20,6 +20,8 @@ if __name__ == "__main__":
     dataset = EngToGer()
     dataset.train_init()
     print(len(dataset.train))
+    print(dataset.inlang.embeddings.shape)
+    print(dataset.outlang.embeddings.shape)
     # d = get_language_loader(dataset.test)
     # for x,y in d:
     #     # print(f"\n\n{x}\n\n")

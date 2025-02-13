@@ -6,7 +6,7 @@ import torch.nn as nn
 from .Log import Logger
 
 def main():
-    Logger.init_logger(wandb=False, print=True)
+    Logger.init_logger(wandb=True, print=True)
     model = TransformerBoujee()
     dataset = EngToGer()
     loss = nn.CrossEntropyLoss(ignore_index=0)
