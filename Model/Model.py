@@ -20,3 +20,6 @@ class Model():
     def init_model(self):
 
         pass
+
+    def save(self, fname):
+        pass

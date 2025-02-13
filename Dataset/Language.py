@@ -24,27 +24,34 @@ class Embeddings():
 
     def load_embeddings(self):
 
-        ft_model =  gensim.models.KeyedVectors.load_word2vec_format(self.fname, binary=False, limit=10000)
-        self.vocab = [*ft_model.index_to_key]
+        self.ft_model =  gensim.models.KeyedVectors.load_word2vec_format(self.fname, binary=False)
+        self.vocab = [*self.ft_model.index_to_key]
         self.vocab.sort()
         self.vocab = [*self.special_toks, *self.vocab]
         self.word_to_tok = {word: ix for ix, word in enumerate(self.vocab)}
         self.tok_to_word = {ix: word for ix, word in enumerate(self.vocab)}
-        pre_trained = torch.tensor(ft_model.vectors, dtype=torch.float32)
-        random_vectors = torch.randn(len(Embeddings.special_toks), Embeddings.embedding_dim)
-        self.embeddings = torch.cat((random_vectors, pre_trained), dim=0)
+        self.embeddings = self.create_embeddings()
+
+    def create_embeddings(self):
+        embeddings = torch.randn((len(self.vocab), 300))
+        for i, word in enumerate(self.vocab):
+            if word in self.ft_model.key_to_index:
+                embeddings[self.word_to_tok[word]] = torch.tensor(self.ft_model.get_vector(word))
+        return embeddings
 
     def get_token(self, word):
+        word = word.lower()
         if word not in self.vocab:
             return self.word_to_tok["<UNK>"]
         
         return self.word_to_tok[word]
     
     def get_word(self, tok):
-        return self.tok_to_word[tok]
+        return self.tok_to_word[int(tok)]
     
     def get_embeddings(self, tok):
         return self.embeddings[tok]
+
     
 
 class Language(Dataset):
@@ -53,8 +60,8 @@ class Language(Dataset):
         current_file_dir = os.path.split(os.path.abspath(__file__))[0]
         dirname = os.path.join(current_file_dir,".raw_data", dirname)
         super().__init__(dirname, LanguageData)
-        self.inlang = Embeddings(os.path.join(current_file_dir,".raw_data", "encodings",inlang+".vec"))
-        self.outlang =  Embeddings(os.path.join(current_file_dir,".raw_data", "encodings",outlang+".vec"))
+        self.inlang = Embeddings(os.path.join(current_file_dir,".raw_data", "encodings",inlang+"_custom.vec"))
+        self.outlang =  Embeddings(os.path.join(current_file_dir,".raw_data", "encodings",outlang+"_custom.vec"))
         self.flip = flip
         self.init_datasets(self.data_splits) 
         
@@ -77,7 +84,7 @@ class Language(Dataset):
             lang = self.inlang 
         s = ""
         for tok in sentence:
-            s += lang.get_word(tok)
+            s += lang.get_word(tok) + " "
         return s
 
     def get_fname(self, split):
@@ -97,7 +104,7 @@ class LanguageData(Data):
         self.c = None
         self.flip = flip
         self.pool_size = 12
-        self.pattern = re.compile(r"\w+|[^\w\s]")
+        self.pattern = re.compile(r"[A-Za-z]+|\d|[^\w\s]")
     def load_data(self):
         if not os.path.exists(self.db_path):
             print(self.db_path)
@@ -162,7 +169,11 @@ class LanguageData(Data):
         for i in range(self.pool_size):
             start = (len(rows)//self.pool_size + 1) * i 
             end = (len(rows)//self.pool_size + 1) * (i + 1)
-            p = multiprocessing.Process(target=LanguageData.single_proc, args=(shared_cache, rows[start:end], self.inlang, self.outlang, self.pattern))
+            if self.flip:
+                p = multiprocessing.Process(target=LanguageData.single_proc, args=(shared_cache, rows[start:end], self.outlang, self.inlang, self.pattern))
+            else:
+                p = multiprocessing.Process(target=LanguageData.single_proc, args=(shared_cache, rows[start:end], self.inlang, self.outlang, self.pattern))
+            
             p.start()
             processes.append(p)
         for p in processes:
@@ -200,7 +211,7 @@ class LanguageData(Data):
 
     def __getitem__(self, idx):
         
-        if self.c is None or self.conn is None:
+        if self.c is None or self.conn is None: 
             self.load_data()
         if isinstance(idx, (list, slice)):
         # Convert to a list if it's a slice
@@ -209,12 +220,12 @@ class LanguageData(Data):
             return [self.__getitem__(i) for i in idx]
         # SQLite indices usually start at 1, so adjust if necessary
         db_idx = idx + 1
-
         # Fetch the row with the corresponding ID
         self.c.execute("SELECT * FROM translations WHERE id = ?", (db_idx,))
         row = self.c.fetchone()
         
         # Return just the row or process it further if needed
+        
         if self.flip:
             return self.convert_to_token_arr(row[4]), self.convert_to_token_arr(row[2])
         else:
@@ -251,6 +262,14 @@ def collate_fn_gen(token_limit):
         ys_padded = pad_sequence(ys, batch_first=True, padding_value=Embeddings.special_toks_val["<PAD>"])
         return xs_padded, ys_padded
     return pad_collate_fn
+def pad_collate_fn(batch):
+
+        xs, ys = zip(*batch)
+        
+        # Pad the list of tensors to create a single tensor of shape [batch_size, max_seq_len]
+        xs_padded = pad_sequence(xs, batch_first=True, padding_value=Embeddings.special_toks_val["<PAD>"])
+        ys_padded = pad_sequence(ys, batch_first=True, padding_value=Embeddings.special_toks_val["<PAD>"])
+        return xs_padded, ys_padded
 
 def language_loader_init_fn(worker_id):
     """Initialize a database connection for each worker."""
@@ -260,7 +279,7 @@ def language_loader_init_fn(worker_id):
         dataset.load_data()  # Initialize the SQLite connection
 
 def get_language_loader(dataset, token_limit= 500, batch_size=64, shuffle=True,num_workers = 8, worker_init_fn=language_loader_init_fn):
-
+    return DataLoader(dataset, batch_size=batch_size, num_workers = num_workers,shuffle=shuffle, worker_init_fn=worker_init_fn,collate_fn=pad_collate_fn)
     # loader = DataLoader(dataset, sampler=TokenBatchSampler(dataset, token_limit, shuffle), num_workers = num_workers, worker_init_fn=worker_init_fn,collate_fn=collate_fn)
     loader = DataLoader(dataset, batch_size=batch_size, num_workers = num_workers, worker_init_fn=worker_init_fn,collate_fn=collate_fn_gen(token_limit))
     return loader

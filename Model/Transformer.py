@@ -175,10 +175,12 @@ class Transformer(Model):
     def train(self, dataset, loss, batch_size=32):
         if self.encoder is None:
             self.lazy_init(dataset, "bruh.pth")
-        dataset.train_load()
-        loader = get_language_loader(dataset.train, batch_size=batch_size)
+        dataset.test_load()
+        loader = get_language_loader(dataset.test, batch_size=batch_size, shuffle=False)
         l_avg = Avg("Loss")
         acc = Acc()
+        self.encoder.train()
+        self.decoder.train()
         for X,Y in tqdm(loader, total=len(loader)):
             
             X = X.to(device).long()
@@ -192,6 +194,7 @@ class Transformer(Model):
             l.backward()
             self.optim.step()
             sentence = dataset.decode_sentence(out.argmax(dim=1)[0])
+            break
         print(sentence)
         l_avg.display()
         acc.display()
