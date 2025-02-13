@@ -3,12 +3,13 @@ import csv
 import os
 import torch
 import gensim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Sampler
 from torch.nn.utils.rnn import pad_sequence
 import re
 import sqlite3
 import numpy as np
 import pandas as pd 
+import random
 import multiprocessing
 
 class Embeddings():
@@ -69,7 +70,16 @@ class Language(Dataset):
             setattr(self, s + "_load", lmbload)
             setattr(self, s + "_init", lmbload)
 
-                
+    def decode_sentence(self, sentence, lang="outlang"):
+        if lang == "outlang":
+            lang = self.outlang 
+        else:
+            lang = self.inlang 
+        s = ""
+        for tok in sentence:
+            s += lang.get_word(tok)
+        return s
+
     def get_fname(self, split):
         return os.path.join(self.dirname, split)
     
@@ -171,8 +181,8 @@ class LanguageData(Data):
 
     @staticmethod
     def convert_row_to_tensor(pattern, row, lang):
-
-        toks = ["<SOS>",pattern.findall(row), "<EOS>"]
+        toks = pattern.findall(row)
+        toks = ["<SOS>",*toks, "<EOS>"]
         toks = [int(lang.get_token(tok)).to_bytes(4, byteorder='little') for tok in toks]
         tok_bytes = b''.join(toks)
         return tok_bytes
@@ -189,8 +199,14 @@ class LanguageData(Data):
         return count
 
     def __getitem__(self, idx):
+        
         if self.c is None or self.conn is None:
             self.load_data()
+        if isinstance(idx, (list, slice)):
+        # Convert to a list if it's a slice
+            if isinstance(idx, slice):
+                idx = list(range(*idx.indices(len(self))))
+            return [self.__getitem__(i) for i in idx]
         # SQLite indices usually start at 1, so adjust if necessary
         db_idx = idx + 1
 
@@ -212,16 +228,29 @@ class LanguageData(Data):
         if self.conn is not None:
             self.conn.close()
 
+def collate_fn_gen(token_limit):
+    def pad_collate_fn(batch):
 
-def pad_collate_fn(batch):
-    
-    xs, ys = zip(*batch)  # Unzip the batch of (x, y) pairs.
-    
-    # Pad the list of tensors to create a single tensor of shape [batch_size, max_seq_len]
-    xs_padded = pad_sequence(xs, batch_first=True, padding_value=Embeddings.special_toks_val["<PAD>"])
-    ys_padded = pad_sequence(ys, batch_first=True, padding_value=Embeddings.special_toks_val["<PAD>"])
-
-    return xs_padded, ys_padded
+        # try:
+        #     xs, ys = zip(*batch[0])
+        #     batch = batch[0]
+        # except:
+        #     xs, ys = zip(*batch)
+        #     batch = batch
+        items = []
+        # print(batch)
+        for item in batch:
+            if len(item[0]) + len(item[1]) > token_limit:
+                continue 
+            items.append(item)
+        batch = items
+        xs, ys = zip(*batch)
+        
+        # Pad the list of tensors to create a single tensor of shape [batch_size, max_seq_len]
+        xs_padded = pad_sequence(xs, batch_first=True, padding_value=Embeddings.special_toks_val["<PAD>"])
+        ys_padded = pad_sequence(ys, batch_first=True, padding_value=Embeddings.special_toks_val["<PAD>"])
+        return xs_padded, ys_padded
+    return pad_collate_fn
 
 def language_loader_init_fn(worker_id):
     """Initialize a database connection for each worker."""
@@ -230,10 +259,89 @@ def language_loader_init_fn(worker_id):
         dataset = worker_info.dataset  # Access the dataset object
         dataset.load_data()  # Initialize the SQLite connection
 
-def get_language_loader(dataset, batch_size=128, shuffle=True,num_workers = 4, worker_init_fn=language_loader_init_fn,collate_fn=pad_collate_fn):
+def get_language_loader(dataset, token_limit= 500, batch_size=64, shuffle=True,num_workers = 8, worker_init_fn=language_loader_init_fn):
 
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,num_workers = num_workers, worker_init_fn=worker_init_fn,collate_fn=collate_fn)
+    # loader = DataLoader(dataset, sampler=TokenBatchSampler(dataset, token_limit, shuffle), num_workers = num_workers, worker_init_fn=worker_init_fn,collate_fn=collate_fn)
+    loader = DataLoader(dataset, batch_size=batch_size, num_workers = num_workers, worker_init_fn=worker_init_fn,collate_fn=collate_fn_gen(token_limit))
     return loader
+
+        
+        
+
+class TokenBatchSampler(Sampler[int]):
+
+    def __init__(self, dataset, token_limit, shuffle=True):
+        """
+        Custom sampler that groups samples into batches by token count.
+
+        Args:
+            dataset (Dataset): Your dataset.
+            token_limit (int): Maximum number of tokens per batch.
+            shuffle (bool): Whether to shuffle the indices at the start of each iteration.
+        """
+        self.dataset = dataset
+        self.token_limit = token_limit
+        self.shuffle = shuffle
+        self.approx = 1000
+
+    def __iter__(self):
+        indxs = list(range(len(self.dataset)))
+        if self.shuffle:
+            random.shuffle(indxs)
+        
+        batch = []
+        sentence_count = 0
+        max_len = 0
+
+        for index in indxs:
+            
+            sentence = self.dataset[index]
+            length = self.get_indv_len(sentence)
+            if length > self.token_limit:
+                # continue
+                pass
+            
+            
+            # If adding this sentence would exceed the token limit,
+            # yield the current batch (if not empty) and start a new one.
+            if length > max_len:
+                max_len = length
+
+            if (sentence_count + 1) * max_len > self.token_limit and len(batch) > 0:
+                yield batch
+                batch = []
+                sentence_count = 0
+                max_len = 0
+            
+            if length > max_len:
+                max_len = length
+
+            batch.append(index)
+            sentence_count +=  1
+            
+        
+        if batch:
+            yield batch
+
+    def get_indv_len(self, sentence):
+        return len(sentence[0]) + len(sentence[1])
+    
+    def __len__(self):
+
+        #approximate length using first 1000 sentences
+        val = 0
+        sentences = min(len(self.dataset),self.approx)
+        max_length = 0
+        for i in range(sentences):
+            length = self.get_indv_len(self.dataset[i])
+            if length > max_length:
+                max_length = length
+            
+        return round(max_length * len(self.dataset))//self.token_limit
+
+
+
+
 if __name__ == "__main__":
 
     dataset = Language(os.path.join("wmt","eng_to_ger"))
@@ -242,5 +350,3 @@ if __name__ == "__main__":
     d = get_language_loader(dataset.test)
     for x,y in d:
         print(f"\n\n{y}\n\n")
-        
-        
