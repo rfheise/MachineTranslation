@@ -38,3 +38,4 @@ class Metric():
     
     def display(self):
         print(f"{self.name}:{self.ret_avg()}")
+    
