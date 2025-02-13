@@ -1,16 +1,19 @@
 import torch
 import gensim
 import string
-
-
+import re
+import csv
 
 def get_words(fname):
-    words = []
+    words = set()
     with open(fname, "r") as f:
         for row in f:
             word = row.strip("\n")
-            words.append(word)
-    words = [*string.punctuation, *words, *string.digits]
+            words.add(word)
+    for tok in [*string.punctuation, *string.digits]:
+         words.add(tok)
+    words = [*words]
+    words.sort()
     return words
 
 def create_embed_mapping(words, vec_fname):
@@ -25,17 +28,37 @@ def create_embed_mapping(words, vec_fname):
     print(len(d.keys()))
     return kv
 
-def main():
+def generate_custom_vec(lang):
     
-    fname = "./.raw_data/encodings/de.txt"
-    vec_fname = "./.raw_data/encodings/de.vec"
-    vec_save = "./.raw_data/encodings/de_custom.vec"
+    fname = f"./.raw_data/encodings/{lang}.txt"
+    vec_fname = f"./.raw_data/encodings/{lang}.vec"
+    vec_save = f"./.raw_data/encodings/{lang}_custom.vec"
 
     words = get_words(fname)
     kv = create_embed_mapping(words, vec_fname)
     kv.save_word2vec_format(vec_save, binary=False)
 
+def get_unique_words(fname, lang):
+    pattern = re.compile(r"[A-Za-z]+|\d|[^\w\s]")
+    lang1 = set()
+    with open(fname, "r") as f:
+        csvreader = csv.reader(f)
+        for row in csvreader:
+            if len(row) != 2:
+                continue
+            if lang == "de":
+                for word in pattern.findall(row[0]):
+                        lang1.add(word.lower())
+            else:
+                for word in pattern.findall(row[1]):
+                        lang1.add(word.lower())
+    with open(f"./.raw_data/encodings/{lang}.txt", "a") as f:
+        for word in lang1:
+            f.write(word + "\n")
+        
+
 if __name__ == "__main__":
-    main()
+    generate_custom_vec("en")
+    # get_unique_words("./.raw_data/wmt/eng_to_ger/test.csv", "de")
 
     
