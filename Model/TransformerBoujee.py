@@ -95,7 +95,34 @@ class TransformerBoujee(Model):
             self.transformer.to(device)
             self.optim = torch.optim.Adam(self.transformer.parameters(), lr=1e-4)
 
+    def test(self, dataset, loss, metrics=[]):
     
+        dataset.val_init()
+        loader = get_language_loader(dataset.val, batch_size=128, shuffle=True)
+        self.lazy_init(dataset)
+        self.transformer.eval()
+        l_avg = Avg("Loss")
+        acc = Acc()
+        with torch.no_grad():
+            for X,Y in tqdm(loader, total=len(loader)):
+                
+                X = X.to(device).long()
+                Y = Y.to(device).long()
+                mask = nn.Transformer.generate_square_subsequent_mask(Y.shape[1]).to(device)
+                out = self.transformer(X,Y, mask).transpose(1,2)
+                l = loss(out, Y)
+                acc.compute_score(out.detach().argmax(dim=1), Y.detach())
+                l_avg.compute_score(l.detach())
+
+            ref = dataset.decode_sentence(X[1].detach().cpu(), "inlang")
+            out_sentence = dataset.decode_sentence(Y[1].detach().cpu())
+            sentence = dataset.decode_sentence(out.argmax(dim=1)[1].detach().cpu())
+        # print("in:",ref,"\n")
+        # print("target:",out_sentence,"\n")
+        # print("out:",sentence,"\n")
+        # l_avg.display()
+        # acc.display()
+        Logger.log({"loss":l_avg.ret_avg(), "acc":acc.ret_avg(), "in":ref,"target":out_sentence,"out":sentence})
     def pred_prob(self, dataset):
 
         pass
@@ -106,7 +133,7 @@ class TransformerBoujee(Model):
 
     def load(self, fname):
 
-        state_dicts = torch.load(fname)
+        state_dicts = torch.load(fname,map_location=device)
         self.num_tokens_in = state_dicts["num_tokens_in"]
         self.num_tokens_out = state_dicts["num_tokens_out"]
         self.embed_dim = state_dicts["embed_dim"]

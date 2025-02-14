@@ -12,6 +12,10 @@ import pandas as pd
 import random
 import multiprocessing
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+if torch.backends.mps.is_available():
+    device = "mps"
+
 class Embeddings():
 
     special_toks = ["<PAD>","<SOS>", "<EOS>", "<UNK>"]
@@ -263,10 +267,23 @@ def collate_fn_gen(token_limit):
         ys_padded = pad_sequence(ys, batch_first=True, padding_value=Embeddings.special_toks_val["<PAD>"])
         return xs_padded, ys_padded
     return pad_collate_fn
+
 def pad_collate_fn(batch):
 
+        # try:
+        #     xs, ys = zip(*batch[0])
+        #     batch = batch[0]
+        # except:
+        #     xs, ys = zip(*batch)
+        #     batch = batch
+        items = []
+        # print(batch)
+        for item in batch:
+            if len(item[0]) > 100 or len(item[1]) > 100:
+                continue 
+            items.append(item)
+        batch = items
         xs, ys = zip(*batch)
-        
         # Pad the list of tensors to create a single tensor of shape [batch_size, max_seq_len]
         xs_padded = pad_sequence(xs, batch_first=True, padding_value=Embeddings.special_toks_val["<PAD>"])
         ys_padded = pad_sequence(ys, batch_first=True, padding_value=Embeddings.special_toks_val["<PAD>"])
@@ -282,6 +299,8 @@ def language_loader_init_fn(worker_id):
 def get_language_loader(dataset, token_limit= 100, batch_size=64, shuffle=True,num_workers = 8, worker_init_fn=language_loader_init_fn):
     #return DataLoader(dataset, batch_size=batch_size, num_workers = num_workers,shuffle=shuffle, worker_init_fn=worker_init_fn,collate_fn=pad_collate_fn)
     # loader = DataLoader(dataset, sampler=TokenBatchSampler(dataset, token_limit, shuffle), num_workers = num_workers, worker_init_fn=worker_init_fn,collate_fn=collate_fn)
+    if device == "mps":
+        return  DataLoader(dataset, batch_size=batch_size, num_workers = num_workers,shuffle=shuffle, worker_init_fn=worker_init_fn,collate_fn=pad_collate_fn)
     loader = DataLoader(dataset, batch_size=batch_size, num_workers = num_workers,shuffle=shuffle, worker_init_fn=worker_init_fn,collate_fn=collate_fn_gen(token_limit))
     return loader
 
