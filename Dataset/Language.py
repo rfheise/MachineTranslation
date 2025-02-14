@@ -5,7 +5,7 @@ import torch
 import gensim
 from torch.utils.data import DataLoader, Sampler
 from torch.nn.utils.rnn import pad_sequence
-import re
+import regex
 import sqlite3
 import numpy as np
 import pandas as pd 
@@ -123,7 +123,7 @@ class LanguageData(Data):
         self.c = None
         self.flip = flip
         self.pool_size = 12
-        self.pattern = re.compile(r"[A-Za-z]+|\d|[^\w\s]")
+        self.pattern = regex.compile(r'\p{L}+|\d|[^\w\s]')
     def load_data(self):
         if not os.path.exists(self.db_path):
             print(self.db_path)

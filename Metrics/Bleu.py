@@ -9,8 +9,11 @@ class Bleu(Metric):
 
     def compute_score_child(self, *args):
         output, target = args 
-        val = bleu_score(output, target, n_gram=1)
-        return val.item(), 1
+        try:
+            val = bleu_score(output, target, n_gram=4)
+            return val.item(), 1
+        except:
+            return 0, 1
 
 
 

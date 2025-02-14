@@ -18,7 +18,10 @@ class GerToEng(Language):
 if __name__ == "__main__":
 
     dataset = EngToGer()
+    dataset.test_init()
+    dataset.val_init()
     dataset.train_init()
+    
     print(len(dataset.train))
     print(dataset.inlang.embeddings.shape)
     print(dataset.outlang.embeddings.shape)

@@ -60,11 +60,13 @@ class TransformerBoujee(Model):
         self.use_scaler = torch.cuda.is_available()
         if self.use_scaler:
             torch.backends.cudnn.benchmark = True
+        else:
+            self.scaler = None
     
     def train(self, dataset, loss, epoch = 0, batch_size=32):
         
         dataset.train_init()
-        loader = get_language_loader(dataset.train, batch_size=batch_size, shuffle=True)
+        loader = get_language_loader(dataset.val, batch_size=batch_size, shuffle=True)
         self.lazy_init(dataset)
         self.transformer.train()
         l_avg = Avg("Loss")
@@ -104,7 +106,11 @@ class TransformerBoujee(Model):
         # print("out:",sentence,"\n")
         # l_avg.display()
         # acc.display()
-        Logger.log({"loss":l_avg.ret_avg(), "acc":acc.ret_avg(), "in":ref,"target":out_sentence,"out":sentence, "epoch":epoch})
+        l_test, bleu_test, acc_test = self.test(dataset, loss)
+        Logger.log({"loss_train":l_avg.ret_avg(), "acc_train":acc.ret_avg(),
+                    "loss_val": l_test.ret_avg(), "bleu_val": bleu_test.ret_avg(),
+                    "acc_val": acc_test.ret_avg(),
+                     "epoch":epoch})
     
     def lazy_init(self, dataset):
         if self.transformer is None:
@@ -115,7 +121,7 @@ class TransformerBoujee(Model):
             self.transformer = Transformer(self.embed_dim, self.num_tokens_in, self.num_tokens_out)
             self.transformer.set_in_lang_embeddings(dataset.inlang.embeddings)
             self.transformer.set_out_lang_embeddings(dataset.outlang.embeddings)
-            self.transformer = torch.compile(self.transformer)
+            # self.transformer = torch.compile(self.transformer)
             self.transformer = self.transformer.to(device)
             self.optim = torch.optim.Adam(self.transformer.parameters(), lr=5e-5)
             if self.use_scaler:
@@ -137,26 +143,31 @@ class TransformerBoujee(Model):
         with torch.no_grad():
             for X,Y in tqdm(loader, total=len(loader)):
                 
-                X = X.to(device).long()
-                Y = Y.to(device).long()
-                out = greedy_search(self, X, dataset.outlang)
+                X = X.to(device)
+                Y = Y.to(device)
+                decoder_input = Y[:,:-1]
+                target = Y[:,1:]
+                mask = nn.Transformer.generate_square_subsequent_mask(decoder_input.shape[1]).to(device)
+                # out = greedy_search(self, X, dataset.outlang)
                 # print(out.shape)
-                # l = loss(out, Y)
-                # acc.compute_score(out.detach().argmax(dim=1), Y.detach())
-                # l_avg.compute_score(l.detach())
+                out = self.transformer(X, decoder_input, mask).transpose(1,2)
+                l = loss(out, target)
+                acc.compute_score(out.detach().argmax(dim=1), target.detach())
+                l_avg.compute_score(l.detach())
                 
-                # bleu.compute_score(dataset.decode_sentences(out.detach()), dataset.decode_sentences(Y.detach()))
+                bleu.compute_score(dataset.decode_sentences(out.detach().argmax(dim=1)), dataset.decode_sentences(target.detach()))
 
-                ref = dataset.decode_sentence(X[1].detach().cpu(), "inlang")
-                out_sentence = dataset.decode_sentence(Y[1].detach().cpu())
-                sentence = dataset.decode_sentence(out[1].detach().cpu())
-                print("in:",ref,"\n")
-                print("target:",out_sentence,"\n")
-                print("out:",sentence,"\n")
+            # ref = dataset.decode_sentence(X[1].detach().cpu(), "inlang")
+            # out_sentence = dataset.decode_sentence(Y[1].detach().cpu())
+            # sentence = dataset.decode_sentence(out[1].detach().argmax(dim=1).cpu())
+            # print("in:",ref,"\n")
+            # print("target:",out_sentence,"\n")
+            # print("out:",sentence,"\n")
         # l_avg.display()
         # acc.display()
-        Logger.log({"loss":l_avg.ret_avg(), "acc":acc.ret_avg(),"bleu":bleu.ret_avg(),
-                     "in":ref,"target":out_sentence,"out":sentence})
+        return l_avg, bleu, acc
+        # Logger.log({"loss":l_avg.ret_avg(), "acc":acc.ret_avg(),"bleu":bleu.ret_avg(),
+        #              "in":ref,"target":out_sentence,"out":sentence})
     def pred_prob(self, X, Y):
         # mask = nn.Transformer.generate_square_subsequent_mask(Y.shape[1]).to(device)
         # print(mask)
@@ -175,7 +186,7 @@ class TransformerBoujee(Model):
         self.num_tokens_out = state_dicts["num_tokens_out"]
         self.embed_dim = state_dicts["embed_dim"]
         self.transformer = Transformer(self.embed_dim, self.num_tokens_in, self.num_tokens_out)
-        self.transformer = torch.compile(self.transformer)
+        # self.transformer = torch.compile(self.transformer)
         self.transformer.load_state_dict(state_dicts["transformer"])
         self.transformer.in_lang_embeddings.load_state_dict(state_dicts["inlang_embed"])
         self.transformer.out_lang_embeddings.load_state_dict(state_dicts["outlang_embed"])

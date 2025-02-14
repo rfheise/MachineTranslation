@@ -1,7 +1,7 @@
 import torch
 import gensim
 import string
-import re
+import regex
 import csv
 
 def get_words(fname):
@@ -39,7 +39,7 @@ def generate_custom_vec(lang):
     kv.save_word2vec_format(vec_save, binary=False)
 
 def get_unique_words(fname, lang):
-    pattern = re.compile(r"[A-Za-z]+|\d|[^\w\s]")
+    pattern = regex.compile(r'\p{L}+|\d|[^\w\s]')
     lang1 = set()
     with open(fname, "r") as f:
         csvreader = csv.reader(f)
@@ -58,7 +58,11 @@ def get_unique_words(fname, lang):
         
 
 if __name__ == "__main__":
-    generate_custom_vec("en")
-    # get_unique_words("./.raw_data/wmt/eng_to_ger/test.csv", "de")
+    langs = ["en","de"]
+    for lang in langs:
+        print(f"getting unique words for {lang}")
+        get_unique_words("./.raw_data/wmt/eng_to_ger/val.csv", lang)
+        print(f"creating embeddings for {lang}")
+        generate_custom_vec(lang)
 
     
