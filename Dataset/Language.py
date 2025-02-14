@@ -83,16 +83,29 @@ class Language(Dataset):
             setattr(self, s + "_load", lmbload)
             setattr(self, s + "_init", lmbload)
 
-    def decode_sentence(self, sentence, lang="outlang"):
+    def decode_sentence(self, sentence, lang="outlang", as_string=True):
         if lang == "outlang":
             lang = self.outlang 
         else:
             lang = self.inlang 
-        s = ""
+        toks = []
         for tok in sentence:
-            s += lang.get_word(tok) + " "
+            word = lang.get_word(tok)
+            if word == "<EOS>":
+                break
+            if word in Embeddings.special_toks and word != "<UNK>":
+                continue
+            toks.append(word)
+        if as_string:
+            return " ".join(toks)
+        return toks
+    
+    def decode_sentences(self, sentences, lang="outlang"):
+        s = []
+        for sentence in sentences:
+            s.append(self.decode_sentence(sentence, lang, True))
         return s
-
+    
     def get_fname(self, split):
         return os.path.join(self.dirname, split)
     
