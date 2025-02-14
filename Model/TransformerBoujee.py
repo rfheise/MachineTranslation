@@ -57,6 +57,9 @@ class TransformerBoujee(Model):
     def __init__(self):
         super().__init__()
         self.transformer = None 
+        self.use_scaler = torch.cuda.is_available()
+        if self.use_scaler:
+            torch.backends.cudnn.benchmark = True
     
     def train(self, dataset, loss, epoch = 0, batch_size=32):
         
@@ -66,20 +69,32 @@ class TransformerBoujee(Model):
         self.transformer.train()
         l_avg = Avg("Loss")
         acc = Acc()
+        masks = []
+        for i in range(150):
+            masks.append(nn.Transformer.generate_square_subsequent_mask(i).to(device))
         for X,Y in tqdm(loader, total=len(loader)):
-            
-            X = X.to(device).long()
-            Y = Y.to(device).long()
+            X = X.to(device)
+            Y = Y.to(device)
             decoder_input = Y[:,:-1]
             target = Y[:,1:]
-            mask = nn.Transformer.generate_square_subsequent_mask(decoder_input.shape[1]).to(device)
-            out = self.transformer(X,decoder_input, mask).transpose(1,2)
-            l = loss(out, target)
+            # mask = nn.Transformer.generate_square_subsequent_mask(decoder_input.shape[1]).to(device)
+            mask = masks[decoder_input.shape[1]]
+            self.optim.zero_grad()
+            if self.scaler is None:
+                out = self.transformer(X,decoder_input, mask).transpose(1,2)
+                l = loss(out, target)
+                l.backward()
+                self.optim.step()
+            else:
+                with torch.amp.autocast(device_type=device):
+                    out = self.transformer(X,decoder_input, mask).transpose(1,2)
+                    l = loss(out, target)
+                self.scaler.scale(l).backward()
+                self.scaler.step(self.optim)
+                self.scaler.update()
             acc.compute_score(out.detach().argmax(dim=1), target.detach())
             l_avg.compute_score(l.detach())
-            self.optim.zero_grad()
-            l.backward()
-            self.optim.step()
+            
 
         ref = dataset.decode_sentence(X[1].detach().cpu(), "inlang")
         out_sentence = dataset.decode_sentence(Y[1].detach().cpu())
@@ -93,14 +108,21 @@ class TransformerBoujee(Model):
     
     def lazy_init(self, dataset):
         if self.transformer is None:
+            # torch.set_float32_matmul_precision("high")
             self.num_tokens_out = dataset.outlang.embeddings.shape[0]
             self.num_tokens_in = dataset.inlang.embeddings.shape[0]
             self.embed_dim = dataset.inlang.embeddings.shape[1]
             self.transformer = Transformer(self.embed_dim, self.num_tokens_in, self.num_tokens_out)
             self.transformer.set_in_lang_embeddings(dataset.inlang.embeddings)
             self.transformer.set_out_lang_embeddings(dataset.outlang.embeddings)
+            self.transformer = torch.compile(self.transformer)
             self.transformer = self.transformer.to(device)
-            self.optim = torch.optim.Adam(self.transformer.parameters(), lr=1e-4)
+            self.optim = torch.optim.Adam(self.transformer.parameters(), lr=5e-5)
+            if self.use_scaler:
+                self.scaler = torch.amp.GradScaler()
+            else:
+                self.scaler = None
+            
 
     def test(self, dataset, loss, metrics=[]):
     
@@ -153,12 +175,17 @@ class TransformerBoujee(Model):
         self.num_tokens_out = state_dicts["num_tokens_out"]
         self.embed_dim = state_dicts["embed_dim"]
         self.transformer = Transformer(self.embed_dim, self.num_tokens_in, self.num_tokens_out)
+        self.transformer = torch.compile(self.transformer)
         self.transformer.load_state_dict(state_dicts["transformer"])
         self.transformer.in_lang_embeddings.load_state_dict(state_dicts["inlang_embed"])
         self.transformer.out_lang_embeddings.load_state_dict(state_dicts["outlang_embed"])
         self.transformer = self.transformer.to(device)
         self.optim = torch.optim.Adam(self.transformer.parameters())
         self.optim.load_state_dict(state_dicts["optim"])
+        if self.use_scaler:
+            self.scaler = torch.amp.GradScaler()
+            self.scaler.load_state_dict(state_dicts["scaler"])
+        
         return state_dicts["epoch"]
     
     def init_model(self):
@@ -166,6 +193,9 @@ class TransformerBoujee(Model):
         pass
 
     def save(self, fname, epoch=0):
+        args = {}
+        if self.scaler:
+            args["scaler"] = self.scaler.state_dict()
         torch.save({
             "transformer":self.transformer.state_dict(),
             "inlang_embed":self.transformer.in_lang_embeddings.state_dict(),
@@ -175,4 +205,5 @@ class TransformerBoujee(Model):
             "num_tokens_in": self.num_tokens_in,
             "epoch":epoch,
             "embed_dim":self.embed_dim,
+            **args
         },fname)
