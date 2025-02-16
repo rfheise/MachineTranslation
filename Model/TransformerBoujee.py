@@ -64,10 +64,10 @@ class TransformerBoujee(Model):
         else:
             self.scaler = None
     
-    def train(self, dataset, loss, epoch = 0, batch_size=128):
+    def train(self, dataset, loss, epoch = 0, batch_size=32):
         
         dataset.train_init()
-        loader = get_language_loader(dataset.train, batch_size=batch_size, shuffle=True)
+        loader = get_language_loader(dataset.val, batch_size=batch_size, shuffle=True)
         self.lazy_init(dataset)
         self.transformer.train()
         l_avg = Avg("Loss")
@@ -134,7 +134,7 @@ class TransformerBoujee(Model):
     def test(self, dataset, loss, search=None, metrics=[]):
     
         dataset.val_init()
-        loader = get_language_loader(dataset.val, batch_size=8, shuffle=True)
+        loader = get_language_loader(dataset.val, batch_size=2, shuffle=True)
         self.lazy_init(dataset)
         self.transformer.eval()
         l_avg = Avg("Loss")
