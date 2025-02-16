@@ -65,7 +65,7 @@ def get_first_eos_indices(tokens, eos_token):
 
     
 
-def beam_search(model, X, outlang, beam_width=5):
+def beam_search(model, X, outlang, beam_width=10):
 
     # (batch, seq_len, k)
     init_out = torch.ones((X.shape[0], 1, 1)) * outlang.get_token("<SOS>")
@@ -111,7 +111,7 @@ def beam_search(model, X, outlang, beam_width=5):
             # print(topk_values.shape)
             # prev_values = topk_values
         # (batch, k * beam_width)
-        # topk_values = topk_values * (1.0/(eos.float())**alpha)
+        topk_values = topk_values * (1.0/(eos.float())**alpha)
         topk_values = topk_values.reshape((X.shape[0],k * beam_width))
         # print(topk_values.shape)
         values, topk_indices = torch.topk(topk_values, beam_width, dim=1, sorted=True,largest=True)

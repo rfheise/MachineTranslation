@@ -1,5 +1,5 @@
 from .Train.train import train_model
-from .Train.test import test_model
+from .Train.test import test_model, infer
 from .Model.TransformerBoujee import TransformerBoujee
 from .Dataset.GerToEng import EngToGer
 import torch
@@ -18,6 +18,7 @@ def main():
     # train_model(model, dataset, loss, epoch_start, epoch_end, "mk1.pth", metrics)
     search = beam_search
     test_model(model, dataset,loss, "./translate/attempts/mk1.pth", search,metrics)
+    # infer(model, dataset,"./translate/attempts/mk1.pth",search )
 
 if __name__ == "__main__":
     main()

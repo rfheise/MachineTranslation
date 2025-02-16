@@ -21,10 +21,17 @@ class Embeddings():
     special_toks = ["<PAD>","<SOS>", "<EOS>", "<UNK>"]
     special_toks_val = {tok: ix for ix, tok in enumerate(special_toks)}
     embedding_dim = 300
+    pattern = regex.compile(r'\p{L}+|\d|[^\w\s]')
 
     def __init__(self, fname):
         self.fname = fname 
         self.load_embeddings()
+
+    def sentence_to_tok(self, sentence):
+        toks = Embeddings.pattern.findall(sentence)
+        toks = ["<SOS>",*toks, "<EOS>"]
+        toks = torch.tensor([int(self.get_token(tok)) for tok in toks])
+        return toks
 
     def load_embeddings(self):
 
@@ -58,6 +65,7 @@ class Embeddings():
     def get_embeddings(self, tok):
         return self.embeddings[tok]
 
+
     
 
 class Language(Dataset):
@@ -70,8 +78,8 @@ class Language(Dataset):
         self.outlang =  Embeddings(os.path.join(current_file_dir,".raw_data", "encodings",outlang+"_custom.vec"))
         self.flip = flip
         self.init_datasets(self.data_splits) 
-        
-    
+
+
     def init_datasets(self, sets):
 
         for s in sets:

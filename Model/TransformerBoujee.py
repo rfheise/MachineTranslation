@@ -64,7 +64,7 @@ class TransformerBoujee(Model):
         else:
             self.scaler = None
     
-    def train(self, dataset, loss, epoch = 0, batch_size=32):
+    def train(self, dataset, loss, epoch = 0, batch_size=128):
         
         dataset.train_init()
         loader = get_language_loader(dataset.train, batch_size=batch_size, shuffle=True)
@@ -124,7 +124,7 @@ class TransformerBoujee(Model):
             self.transformer.set_out_lang_embeddings(dataset.outlang.embeddings)
             # self.transformer = torch.compile(self.transformer)
             self.transformer = self.transformer.to(device)
-            self.optim = torch.optim.Adam(self.transformer.parameters(), lr=1e-4)
+            self.optim = torch.optim.Adam(self.transformer.parameters(), lr=1e-5)
             if self.use_scaler:
                 self.scaler = torch.amp.GradScaler()
             else:
@@ -134,7 +134,7 @@ class TransformerBoujee(Model):
     def test(self, dataset, loss, search=None, metrics=[]):
     
         dataset.val_init()
-        loader = get_language_loader(dataset.val, batch_size=1, shuffle=True)
+        loader = get_language_loader(dataset.val, batch_size=8, shuffle=True)
         self.lazy_init(dataset)
         self.transformer.eval()
         l_avg = Avg("Loss")
@@ -210,8 +210,6 @@ class TransformerBoujee(Model):
     def load(self, fname):
 
         state_dicts = torch.load(fname,map_location=device)
-        if device == "mps" or device == "cpu":
-            state_dicts = self.remove_prefix_from_state_dict(state_dicts)
         self.num_tokens_in = state_dicts["num_tokens_in"]
         self.num_tokens_out = state_dicts["num_tokens_out"]
         self.embed_dim = state_dicts["embed_dim"]
@@ -223,7 +221,7 @@ class TransformerBoujee(Model):
         self.transformer.out_lang_embeddings = self.transformer.out_lang_embeddings.to(device)
         self.transformer.in_lang_embeddings.load_state_dict(state_dicts["inlang_embed"])
         self.transformer.out_lang_embeddings.load_state_dict(state_dicts["outlang_embed"])
-        self.optim = torch.optim.Adam(self.transformer.parameters(), lr = 1e-4)
+        self.optim = torch.optim.Adam(self.transformer.parameters(), lr = 1e-5)
         self.optim.load_state_dict(state_dicts["optim"])
         if self.use_scaler:
             self.scaler = torch.amp.GradScaler()
