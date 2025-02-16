@@ -58,7 +58,8 @@ def get_unique_words(fname, lang):
         
 
 if __name__ == "__main__":
-    langs = ["en","de"]
+    # langs = ["en","de"]
+    langs = ['fr']
     for lang in langs:
         print(f"getting unique words for {lang}")
         get_unique_words("./.raw_data/wmt/eng_to_ger/val.csv", lang)
