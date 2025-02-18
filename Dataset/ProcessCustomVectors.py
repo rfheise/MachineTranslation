@@ -3,6 +3,7 @@ import gensim
 import string
 import regex
 import csv
+import os
 
 def get_words(fname):
     words = set()
@@ -28,38 +29,44 @@ def create_embed_mapping(words, vec_fname):
     print(len(d.keys()))
     return kv
 
-def generate_custom_vec(lang):
+def generate_custom_vec(dataset_folder, lang):
     
-    fname = f"./.raw_data/encodings/{lang}.txt"
-    vec_fname = f"./.raw_data/encodings/{lang}.vec"
-    vec_save = f"./.raw_data/encodings/{lang}_custom.vec"
+    fname = os.path.join(dataset_folder, f"{lang}.txt")
+    vec_fname = os.path.join(dataset_folder,f"{lang}.vec")
+    vec_save = os.path.join(dataset_folder,f"{lang}_custom.vec")
 
     words = get_words(fname)
     kv = create_embed_mapping(words, vec_fname)
     kv.save_word2vec_format(vec_save, binary=False)
 
-def get_unique_words(fname, lang, col):
+def get_unique_words(dataset_folder, lang, col):
     pattern = regex.compile(r'\p{L}+|\d|[^\w\s]')
     lang1 = set()
-    with open(fname, "r") as f:
+    first_row = True
+    with open(os.path.join(dataset_folder, "val.csv"), "r") as f:
         csvreader = csv.reader(f)
         for row in csvreader:
+            if first_row:
+                first_row = False 
+                continue
             if len(row) != 2:
                 continue
             for word in pattern.findall(row[col]):
                     lang1.add(word.lower())
-    with open(f"./.raw_data/encodings/{lang}.txt", "a") as f:
+    
+    with open(os.path.join(dataset_folder, f"{lang}.txt"), "a") as f:
         for word in lang1:
             f.write(word + "\n")
         
 
 if __name__ == "__main__":
     # langs = ["en","de"]
-    langs = ['fr']
+    langs = [{"lang":"en","col":0},{"lang":"fr","col":1}]
+    dataset_folder = "./.raw_data/wmt/eng_to_fr"
     for lang in langs:
-        print(f"getting unique words for {lang}")
-        get_unique_words("./.raw_data/wmt/eng_to_fr/val.csv", lang)
-        print(f"creating embeddings for {lang}")
-        generate_custom_vec(lang)
+        print(f"getting unique words for {lang['lang']}")
+        get_unique_words(dataset_folder, lang["lang"], lang["col"])
+        print(f"creating embeddings for {lang['lang']}")
+        generate_custom_vec(dataset_folder,lang["lang"])
 
     

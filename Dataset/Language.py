@@ -74,8 +74,8 @@ class Language(Dataset):
         current_file_dir = os.path.split(os.path.abspath(__file__))[0]
         dirname = os.path.join(current_file_dir,".raw_data", dirname)
         super().__init__(dirname, LanguageData)
-        self.inlang = Embeddings(os.path.join(current_file_dir,".raw_data", "encodings",inlang+"_custom.vec"))
-        self.outlang =  Embeddings(os.path.join(current_file_dir,".raw_data", "encodings",outlang+"_custom.vec"))
+        self.inlang = Embeddings(os.path.join(dirname,inlang+"_custom.vec"))
+        self.outlang =  Embeddings(os.path.join(dirname,outlang+"_custom.vec"))
         self.flip = flip
         self.init_datasets(self.data_splits) 
 

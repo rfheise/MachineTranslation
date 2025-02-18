@@ -6,14 +6,14 @@ class EngToGer(Language):
 
     def __init__(self):
         
-        super().__init__(os.path.join("wmt","eng_to_ger"),"en","de",True) 
+        super().__init__(os.path.join("wmt","ger_to_eng"),"en","de",True) 
 
 class GerToEng(Language):
 
 
     def __init__(self):
         
-        super().__init__(os.path.join("wmt","eng_to_ger"),"de","en",False) 
+        super().__init__(os.path.join("wmt","ger_to_eng"),"de","en",False) 
 
 if __name__ == "__main__":
 

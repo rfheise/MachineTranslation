@@ -7,7 +7,7 @@ from tqdm import tqdm
 from ..Metrics.Acc import Acc 
 from ..Metrics.Avg import Avg
 from ..Metrics.Bleu import Bleu
-from ..Search.Search import greedy_search
+from ..Search.Search import greedy_search, beam_search
 import random 
 from ..Log import Logger
 import collections
@@ -55,8 +55,12 @@ class Transformer(nn.Module):
 
 class TransformerBoujee(Model):
     
-    def __init__(self):
+    def __init__(self, lr, lr_decay, lr_step, batch_size):
         super().__init__()
+        self.lr = lr 
+        self.lr_decay = lr_decay 
+        self.lr_step = lr_step
+        self.batch_size = batch_size
         self.transformer = None 
         self.use_scaler = torch.cuda.is_available()
         if self.use_scaler:
@@ -64,10 +68,10 @@ class TransformerBoujee(Model):
         else:
             self.scaler = None
     
-    def train(self, dataset, loss, epoch = 0, batch_size=32):
+    def train(self, dataset, loss, epoch = 0):
         
         dataset.train_init()
-        loader = get_language_loader(dataset.train, batch_size=batch_size, shuffle=True)
+        loader = get_language_loader(dataset.train, batch_size=self.batch_size, shuffle=True)
         self.lazy_init(dataset)
         self.transformer.train()
         l_avg = Avg("Loss")
@@ -107,7 +111,11 @@ class TransformerBoujee(Model):
         print("out:",sentence,"\n")
         # l_avg.display()
         # acc.display()
-        l_test, bleu_test, acc_test = self.test(dataset, loss)
+        l_test, _, acc_test = self.test(dataset, loss)
+        tmp = self.batch_size
+        self.batch_size = 8
+        _, bleu_test, _ = self.test(dataset, loss, search=beam_search)
+        self.batch_size = tmp
         Logger.log({"loss_train":l_avg.ret_avg(), "acc_train":acc.ret_avg(),
                     "loss_val": l_test.ret_avg(), "bleu_val": bleu_test.ret_avg(),
                     "acc_val": acc_test.ret_avg(),
@@ -124,7 +132,8 @@ class TransformerBoujee(Model):
             self.transformer.set_out_lang_embeddings(dataset.outlang.embeddings)
             # self.transformer = torch.compile(self.transformer)
             self.transformer = self.transformer.to(device)
-            self.optim = torch.optim.Adam(self.transformer.parameters(), lr=1e-4)
+            self.optim = torch.optim.Adam(self.transformer.parameters(), lr=self.lr)
+            self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, self.lr_step, gamma=self.lr_decay)
             if self.use_scaler:
                 self.scaler = torch.amp.GradScaler()
             else:
@@ -134,7 +143,7 @@ class TransformerBoujee(Model):
     def test(self, dataset, loss, search=None, metrics=[]):
     
         dataset.val_init()
-        loader = get_language_loader(dataset.val, batch_size=2, shuffle=True)
+        loader = get_language_loader(dataset.val, batch_size=self.batch_size, shuffle=True)
         self.lazy_init(dataset)
         self.transformer.eval()
         l_avg = Avg("Loss")
@@ -165,6 +174,7 @@ class TransformerBoujee(Model):
                 # print("in:",ref,"\n")
                 # print("target:",out_sentence,t_prob[0],"\n")
                 # print("out:",sentence,out_prob[0],"\n")
+            self.scheduler.step()
         return l_avg, bleu, acc
     
     def compute_p_sentence(self, X, Y, eos_token):
@@ -221,8 +231,9 @@ class TransformerBoujee(Model):
         self.transformer.out_lang_embeddings = self.transformer.out_lang_embeddings.to(device)
         self.transformer.in_lang_embeddings.load_state_dict(state_dicts["inlang_embed"])
         self.transformer.out_lang_embeddings.load_state_dict(state_dicts["outlang_embed"])
-        self.optim = torch.optim.Adam(self.transformer.parameters(), lr = 1e-5)
+        self.optim = torch.optim.Adam(self.transformer.parameters(), lr = self.lr)
         self.optim.load_state_dict(state_dicts["optim"])
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, self.lr_step, gamma=self.lr_decay, last_epoch=state_dicts["epoch"])
         if self.use_scaler:
             self.scaler = torch.amp.GradScaler()
             self.scaler.load_state_dict(state_dicts["scaler"])

@@ -7,9 +7,9 @@ class Logger():
     def __init__(self):
         pass
 
-    def init_logger(wandb=True, print=True):
+    def init_logger(wandb=True, print=True, run_id=None):
         if wandb:
-            Logger.logs.append(WandB())
+            Logger.logs.append(WandB(run_id))
         if print:
             Logger.logs.append(Printer())
 
@@ -19,7 +19,7 @@ class Logger():
             log.msg(**log_dict)
 
 class Log():
-    def __init__(self):
+    def __init__(self, *args):
         pass
 
     def msg(*args, **kwargs):
@@ -28,10 +28,11 @@ class Log():
 class WandB(Log):
 
 
-    def __init__(self):
-        wandb.init(project = "Rosetta")
+    def __init__(self, run_id):
+        self.run_id = run_id
+        wandb.init(project = "Rosetta",id=run_id,resume="allow")
     
-    def msg(*args,**kwargs):
+    def msg(self, *args,**kwargs):
         if "epoch" in kwargs:
             wandb.log(kwargs,step=kwargs['epoch'])
         else:
@@ -39,10 +40,10 @@ class WandB(Log):
 
 class Printer(Log):
 
-    def __init__(self):
+    def __init__(self, *args):
         pass 
 
-    def msg(*args,**kwargs):
+    def msg(self, *args,**kwargs):
 
         for key in kwargs:
             print(f"{key}:{kwargs[key]}")
