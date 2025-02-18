@@ -65,7 +65,7 @@ def get_first_eos_indices(tokens, eos_token):
 
     
 
-def beam_search(model, X, outlang, beam_width=10):
+def beam_search(model, X, outlang, beam_width=5):
 
     # (batch, seq_len, k)
     init_out = torch.ones((X.shape[0], 1, 1)) * outlang.get_token("<SOS>")

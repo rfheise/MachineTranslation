@@ -130,7 +130,7 @@ class LanguageData(Data):
         self.conn = None
         self.c = None
         self.flip = flip
-        self.pool_size = 12
+        self.pool_size = 24
         self.pattern = regex.compile(r'\p{L}+|\d|[^\w\s]')
     def load_data(self):
         if not os.path.exists(self.db_path):

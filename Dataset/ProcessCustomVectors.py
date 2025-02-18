@@ -62,7 +62,7 @@ if __name__ == "__main__":
     langs = ['fr']
     for lang in langs:
         print(f"getting unique words for {lang}")
-        get_unique_words("./.raw_data/wmt/eng_to_ger/val.csv", lang)
+        get_unique_words("./.raw_data/wmt/eng_to_fr/val.csv", lang)
         print(f"creating embeddings for {lang}")
         generate_custom_vec(lang)
 
