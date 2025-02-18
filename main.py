@@ -42,14 +42,14 @@ def eng_to_fr():
     batch_size = 256
     model = TransformerBoujee(lr, lr_decay, lr_decay_step, batch_size)
     metrics = []
-    # fname = "./translate/attempts/ger_mk1/model-epoch-2.pth"
-    fname = None
+    fname = "./translate/attempts/fr_mk1/model-epoch-1.pth"
+    #fname = None
     train_model(model, dataset, loss, epoch_start, epoch_end, fname,"./translate/attempts/fr_mk1", metrics)
     search = beam_search
-    # test_model(model, dataset,loss, "./translate/attempts/french.pth", search,metrics)
-    # infer(model, dataset,"./translate/attempts/mk1.pth",search )
+    test_model(model, dataset,loss, fname, search,metrics)
+    #infer(model, dataset,fname,search )
 
 
 if __name__ == "__main__":
-    eng_to_ger()
-    # eng_to_fr()
+    #eng_to_ger()
+    eng_to_fr()

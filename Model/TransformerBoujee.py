@@ -103,7 +103,7 @@ class TransformerBoujee(Model):
                 self.scaler.update()
             acc.compute_score(out.detach().argmax(dim=1), target.detach())
             l_avg.compute_score(l.detach())
-            
+        self.scheduler.step() 
 
         ref = dataset.decode_sentence(X[1].detach().cpu(), "inlang")
         out_sentence = dataset.decode_sentence(Y[1].detach().cpu())
@@ -183,7 +183,7 @@ class TransformerBoujee(Model):
                 # print("in:",ref,"\n")
                 # print("target:",out_sentence,t_prob[0],"\n")
                 # print("out:",sentence,out_prob[0],"\n")
-            self.scheduler.step()
+            #self.scheduler.step()
         return l_avg, bleu, acc
     
     def compute_p_sentence(self, X, Y, eos_token):

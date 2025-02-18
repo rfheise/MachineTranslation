@@ -6,6 +6,8 @@ if torch.backends.mps.is_available():
 def test_model(model, dataset,loss, fname,search=None, metrics=[]):
 
     model.load(fname)
+    model.batch_size = 2
+    model.transformer=model.og
     l_avg, bleu, acc =  model.test(dataset,loss,search, metrics)
     l_avg.display()
     bleu.display()
