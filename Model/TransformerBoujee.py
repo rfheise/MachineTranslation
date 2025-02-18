@@ -65,6 +65,7 @@ class TransformerBoujee(Model):
         self.use_scaler = torch.cuda.is_available()
         if self.use_scaler:
             torch.backends.cudnn.benchmark = True
+            torch.set_float32_matmul_precision('high')
         else:
             self.scaler = None
     
@@ -79,6 +80,7 @@ class TransformerBoujee(Model):
         masks = []
         for i in range(150):
             masks.append(nn.Transformer.generate_square_subsequent_mask(i).to(device))
+        
         for X,Y in tqdm(loader, total=len(loader)):
             X = X.to(device)
             Y = Y.to(device)
@@ -111,10 +113,15 @@ class TransformerBoujee(Model):
         print("out:",sentence,"\n")
         # l_avg.display()
         # acc.display()
-        l_test, _, acc_test = self.test(dataset, loss)
         tmp = self.batch_size
         self.batch_size = 8
-        _, bleu_test, _ = self.test(dataset, loss, search=beam_search)
+        if self.use_scaler:
+            tmp_model = self.transformer
+            self.transformer = self.og
+        l_test, bleu_test, acc_test = self.test(dataset, loss)
+        # _, bleu_test, _ = self.test(dataset, loss, search=beam_search)
+        if self.use_scaler:
+            self.transformer = tmp_model
         self.batch_size = tmp
         Logger.log({"loss_train":l_avg.ret_avg(), "acc_train":acc.ret_avg(),
                     "loss_val": l_test.ret_avg(), "bleu_val": bleu_test.ret_avg(),
@@ -130,8 +137,10 @@ class TransformerBoujee(Model):
             self.transformer = Transformer(self.embed_dim, self.num_tokens_in, self.num_tokens_out)
             self.transformer.set_in_lang_embeddings(dataset.inlang.embeddings)
             self.transformer.set_out_lang_embeddings(dataset.outlang.embeddings)
-            # self.transformer = torch.compile(self.transformer)
             self.transformer = self.transformer.to(device)
+            if self.use_scaler:
+                self.og = self.transformer
+                self.transformer = torch.compile(self.transformer)
             self.optim = torch.optim.Adam(self.transformer.parameters(), lr=self.lr)
             self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, self.lr_step, gamma=self.lr_decay)
             if self.use_scaler:
@@ -224,9 +233,11 @@ class TransformerBoujee(Model):
         self.num_tokens_out = state_dicts["num_tokens_out"]
         self.embed_dim = state_dicts["embed_dim"]
         self.transformer = Transformer(self.embed_dim, self.num_tokens_in, self.num_tokens_out)
-        # self.transformer = torch.compile(self.transformer)
         self.transformer.load_state_dict(state_dicts["transformer"])
         self.transformer = self.transformer.to(device)
+        if self.use_scaler:
+            self.og = self.transformer
+            self.transformer = torch.compile(self.transformer)
         self.transformer.in_lang_embeddings = self.transformer.in_lang_embeddings.to(device)
         self.transformer.out_lang_embeddings = self.transformer.out_lang_embeddings.to(device)
         self.transformer.in_lang_embeddings.load_state_dict(state_dicts["inlang_embed"])
@@ -248,8 +259,10 @@ class TransformerBoujee(Model):
         args = {}
         if self.scaler:
             args["scaler"] = self.scaler.state_dict()
+            args["transformer"] = self.og.state_dict()
+        else:
+            args["transformer"] = self.transformer.state_dict()
         torch.save({
-            "transformer":self.transformer.state_dict(),
             "inlang_embed":self.transformer.in_lang_embeddings.state_dict(),
             "outlang_embed": self.transformer.out_lang_embeddings.state_dict(),
             "optim":self.optim.state_dict(),

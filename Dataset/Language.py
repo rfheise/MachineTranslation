@@ -317,7 +317,7 @@ def language_loader_init_fn(worker_id):
         dataset = worker_info.dataset  # Access the dataset object
         dataset.load_data()  # Initialize the SQLite connection
 
-def get_language_loader(dataset, token_limit= 100, batch_size=64, shuffle=True,num_workers = 8, worker_init_fn=language_loader_init_fn):
+def get_language_loader(dataset, token_limit= 100, batch_size=64, shuffle=True,num_workers = 12, worker_init_fn=language_loader_init_fn):
     #return DataLoader(dataset, batch_size=batch_size, num_workers = num_workers,shuffle=shuffle, worker_init_fn=worker_init_fn,collate_fn=pad_collate_fn)
     # loader = DataLoader(dataset, sampler=TokenBatchSampler(dataset, token_limit, shuffle), num_workers = num_workers, worker_init_fn=worker_init_fn,collate_fn=collate_fn)
     if device == "mps":

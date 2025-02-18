@@ -9,7 +9,7 @@ from .Search.Search import greedy_search, beam_search
 from .Log import Logger
 
 def eng_to_ger():
-    run_id = 'pdpfvxgj'
+    run_id = 'tm2zle1r'
     Logger.init_logger(wandb=True, print=True, run_id=run_id)
     dataset = EngToGer()
     loss = nn.CrossEntropyLoss(ignore_index=0)
@@ -21,8 +21,8 @@ def eng_to_ger():
     batch_size = 256
     model = TransformerBoujee(lr, lr_decay, lr_decay_step, batch_size)
     metrics = []
-    # fname = "./translate/attempts/ger_mk1/model-epoch-2.pth"
-    fname = None
+    fname = "./translate/attempts/ger_mk1/model-epoch-5.pth"
+    # fname = None
     train_model(model, dataset, loss, epoch_start, epoch_end, fname,"./translate/attempts/ger_mk1", metrics)
     search = beam_search
     # test_model(model, dataset,loss, "./translate/attempts/french.pth", search,metrics)
