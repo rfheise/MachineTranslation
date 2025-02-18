@@ -38,7 +38,7 @@ def generate_custom_vec(lang):
     kv = create_embed_mapping(words, vec_fname)
     kv.save_word2vec_format(vec_save, binary=False)
 
-def get_unique_words(fname, lang):
+def get_unique_words(fname, lang, col):
     pattern = regex.compile(r'\p{L}+|\d|[^\w\s]')
     lang1 = set()
     with open(fname, "r") as f:
@@ -46,12 +46,8 @@ def get_unique_words(fname, lang):
         for row in csvreader:
             if len(row) != 2:
                 continue
-            if lang == "de":
-                for word in pattern.findall(row[0]):
-                        lang1.add(word.lower())
-            else:
-                for word in pattern.findall(row[1]):
-                        lang1.add(word.lower())
+            for word in pattern.findall(row[col]):
+                    lang1.add(word.lower())
     with open(f"./.raw_data/encodings/{lang}.txt", "a") as f:
         for word in lang1:
             f.write(word + "\n")
