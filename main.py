@@ -21,7 +21,7 @@ def eng_to_ger():
     batch_size = 256
     model = TransformerBoujee(lr, lr_decay, lr_decay_step, batch_size)
     metrics = []
-    fname = "./translate/attempts/ger_mk1/model-epoch-5.pth"
+    fname = "./translate/attempts/ger_mk1/model-epoch-1.pth"
     # fname = None
     train_model(model, dataset, loss, epoch_start, epoch_end, fname,"./translate/attempts/ger_mk1", metrics)
     search = beam_search
@@ -30,7 +30,7 @@ def eng_to_ger():
 
 def eng_to_fr():
     run_id = 'tuplnc11'
-    Logger.init_logger(wandb=True, print=True, run_id=run_id)
+    Logger.init_logger(wandb=False, print=True, run_id=run_id)
     
     dataset = EngToFr()
     loss = nn.CrossEntropyLoss(ignore_index=0)
@@ -42,14 +42,14 @@ def eng_to_fr():
     batch_size = 256
     model = TransformerBoujee(lr, lr_decay, lr_decay_step, batch_size)
     metrics = []
-    fname = "./translate/attempts/fr_mk1/model-epoch-1.pth"
+    fname = "./translate/attempts/fr_mk1/model-epoch-3.pth"
     #fname = None
-    train_model(model, dataset, loss, epoch_start, epoch_end, fname,"./translate/attempts/fr_mk1", metrics)
+    # train_model(model, dataset, loss, epoch_start, epoch_end, fname,"./translate/attempts/fr_mk1", metrics)
     search = beam_search
     test_model(model, dataset,loss, fname, search,metrics)
-    #infer(model, dataset,fname,search )
+    # infer(model, dataset,fname,search )
 
 
 if __name__ == "__main__":
-    #eng_to_ger()
+    # eng_to_ger()
     eng_to_fr()
