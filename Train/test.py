@@ -1,7 +1,6 @@
 import torch
-device = "cuda" if torch.cuda.is_available() else "cpu"
-if torch.backends.mps.is_available():
-    device = "mps"
+from ..Log import Logger 
+device = Logger.device
 
 def test_model(model, dataset,loss, fname,search=None, metrics=[]):
 

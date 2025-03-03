@@ -11,10 +11,8 @@ import numpy as np
 import pandas as pd 
 import random
 import multiprocessing
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-if torch.backends.mps.is_available():
-    device = "mps"
+from ..Log import Logger 
+device = Logger.device
 
 class Embeddings():
 

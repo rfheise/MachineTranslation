@@ -1,9 +1,14 @@
 
 import wandb
-
+import torch
 
 class Logger():
     logs = []
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.backends.mps.is_available():
+        device = "mps"
+    # device = "cpu"
+    
     def __init__(self):
         pass
 
@@ -47,3 +52,6 @@ class Printer(Log):
 
         for key in kwargs:
             print(f"{key}:{kwargs[key]}")
+
+if __name__ == "__main__":
+    print(Logger.device)

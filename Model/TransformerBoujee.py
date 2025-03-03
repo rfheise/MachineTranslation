@@ -12,9 +12,7 @@ import random
 from ..Log import Logger
 import collections
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-if torch.backends.mps.is_available():
-    device = "mps"
+device = Logger.device
 
 
 class Transformer(nn.Module):
@@ -62,7 +60,7 @@ class TransformerBoujee(Model):
         self.lr_step = lr_step
         self.batch_size = batch_size
         self.transformer = None 
-        self.use_scaler = torch.cuda.is_available()
+        self.use_scaler = (device == "cuda")
         if self.use_scaler:
             torch.backends.cudnn.benchmark = True
             torch.set_float32_matmul_precision('high')
@@ -138,8 +136,8 @@ class TransformerBoujee(Model):
             self.transformer.set_in_lang_embeddings(dataset.inlang.embeddings)
             self.transformer.set_out_lang_embeddings(dataset.outlang.embeddings)
             self.transformer = self.transformer.to(device)
+            self.og = self.transformer
             if self.use_scaler:
-                self.og = self.transformer
                 self.transformer = torch.compile(self.transformer)
             self.optim = torch.optim.Adam(self.transformer.parameters(), lr=self.lr)
             self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, self.lr_step, gamma=self.lr_decay)
@@ -235,8 +233,8 @@ class TransformerBoujee(Model):
         self.transformer = Transformer(self.embed_dim, self.num_tokens_in, self.num_tokens_out)
         self.transformer.load_state_dict(state_dicts["transformer"])
         self.transformer = self.transformer.to(device)
+        self.og = self.transformer
         if self.use_scaler:
-            self.og = self.transformer
             self.transformer = torch.compile(self.transformer)
         self.transformer.in_lang_embeddings = self.transformer.in_lang_embeddings.to(device)
         self.transformer.out_lang_embeddings = self.transformer.out_lang_embeddings.to(device)

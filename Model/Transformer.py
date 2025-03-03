@@ -8,10 +8,8 @@ from ..Metrics.Avg import Avg
 from ..Metrics.Bleu import Bleu
 import os
 from ..Metrics.Acc import Acc
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-if torch.backends.mps.is_available():
-    device = torch.device("mps")
+from ..Log import Logger 
+device = Logger.device
 
 class SequentialMultiArg(nn.Sequential):
     def forward(self, *inputs):

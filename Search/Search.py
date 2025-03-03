@@ -1,10 +1,10 @@
 import torch
 from torch import nn
+from ..Log import Logger 
 
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-if torch.backends.mps.is_available():
-    device = "mps"
+
+device = Logger.device
 
 # def beam_search(model, X, outlang, beam_width=5):
 #     # (batch, seq_len, k)
