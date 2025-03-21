@@ -46,7 +46,7 @@ def eng_to_fr():
     metrics = []
     for i in range(12):
         print("epoch " + str(i))
-        fname = "./translate/attempts/fr_mk2/model-epoch-12.pth"
+        fname = f"./translate/attempts/fr_mk2/model-epoch-{i}.pth"
     #fname = None
     #train_model(model, dataset, loss, epoch_start, epoch_end, fname,"./translate/attempts/fr_mk2", metrics)
         search = beam_search
