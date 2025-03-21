@@ -1,3 +1,4 @@
 *.pyc
 .raw_data
 attempts
+tmp

@@ -17,25 +17,33 @@ device = Logger.device
 
 class Transformer(nn.Module):
 
-    def __init__(self, embed_dim, num_tokens_in, num_tokens_out):
+    def __init__(self, embed_dim, num_tokens_in, num_tokens_out, single_embed=False):
         super().__init__()
 
-        self.transformer = nn.Transformer(d_model = embed_dim,batch_first=True, nhead=10, num_encoder_layers=6, num_decoder_layers=6)
+        self.transformer = nn.Transformer(d_model = embed_dim,batch_first=True, nhead=8, num_encoder_layers=6, num_decoder_layers=6)
         self.linear = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
             nn.ReLU(),
             nn.Linear(embed_dim, num_tokens_out),
         )
+        self.single_embed = single_embed
         self.out_lang_embeddings = nn.Embedding(num_tokens_out, embed_dim).to(device)
-        self.in_lang_embeddings = nn.Embedding(num_tokens_in, embed_dim).to(device)
+        if not self.single_embed:
+            self.in_lang_embeddings = nn.Embedding(num_tokens_in, embed_dim).to(device)
+        else:
+            self.in_lang_embeddings = self.out_lang_embeddings
         self.pos_enc = PositionalEncoding(embed_dim).to(device)
     
     def set_out_lang_embeddings(self, out_lang_embeddings):
-
+        if not out_lang_embeddings:
+            print("Out Lang Embeddings Are Empty")
+            return 
         self.out_lang_embeddings = nn.Embedding.from_pretrained(out_lang_embeddings, freeze=False).to(device)
     
     def set_in_lang_embeddings(self, in_lang_embeddings):
-
+        if not in_lang_embeddings:
+            print("In Lang Embeddings Are Empty")
+            return 
         self.in_lang_embeddings = nn.Embedding.from_pretrained(in_lang_embeddings, freeze=False).to(device)
 
     def forward(self, X, Y, mask=None):
@@ -61,6 +69,7 @@ class TransformerBoujee(Model):
         self.batch_size = batch_size
         self.transformer = None 
         self.use_scaler = (device == "cuda")
+        self.embed_dim = 512
         if self.use_scaler:
             torch.backends.cudnn.benchmark = True
             torch.set_float32_matmul_precision('high')
@@ -129,9 +138,11 @@ class TransformerBoujee(Model):
     def lazy_init(self, dataset):
         if self.transformer is None:
             # torch.set_float32_matmul_precision("high")
-            self.num_tokens_out = dataset.outlang.embeddings.shape[0]
-            self.num_tokens_in = dataset.inlang.embeddings.shape[0]
-            self.embed_dim = dataset.inlang.embeddings.shape[1]
+            self.num_tokens_out = dataset.outlang.get_token_count()
+            self.num_tokens_in = dataset.inlang.get_token_count()
+            tmp = dataset.inlang.get_embed_dim()
+            if tmp is not None:
+                self.embed_dim = tmp
             self.transformer = Transformer(self.embed_dim, self.num_tokens_in, self.num_tokens_out)
             self.transformer.set_in_lang_embeddings(dataset.inlang.embeddings)
             self.transformer.set_out_lang_embeddings(dataset.outlang.embeddings)

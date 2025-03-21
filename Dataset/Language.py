@@ -12,6 +12,7 @@ import pandas as pd
 import random
 import multiprocessing
 from ..Log import Logger 
+import sentencepiece as spm
 device = Logger.device
 
 class Embeddings():
@@ -21,16 +22,24 @@ class Embeddings():
     embedding_dim = 300
     pattern = regex.compile(r'\p{L}+|\d|[^\w\s]')
 
-    def __init__(self, fname):
-        self.fname = fname 
+    def __init__(self, dname, lang):
+        self.dname = dname
+        self.lang = lang
+        self.fname = os.path.join(dname, lang+"_custom.vec")
         self.load_embeddings()
+        self.embeddings = None
 
     def sentence_to_tok(self, sentence):
         toks = Embeddings.pattern.findall(sentence)
         toks = ["<SOS>",*toks, "<EOS>"]
         toks = torch.tensor([int(self.get_token(tok)) for tok in toks])
         return toks
-
+    def get_token_count(self):
+        return self.embeddings.shape[0]
+    
+    def get_embed_dim(self):
+        return self.embeddings.shape[1]
+    
     def load_embeddings(self):
 
         self.ft_model =  gensim.models.KeyedVectors.load_word2vec_format(self.fname, binary=False)
@@ -62,18 +71,86 @@ class Embeddings():
     
     def get_embeddings(self, tok):
         return self.embeddings[tok]
+    
+class BytePairEmbeddings(Embeddings):
+
+    def __init__(self, dname, lang, vocab_size=37000):
+        self.vocab_size = vocab_size
+        super().__init__(dname, lang)
+
+    def load_embeddings(self):
+        tok_file = os.path.join(self.dname, "lang_embed.model")
+        if not os.path.exists(tok_file):
+            self.generate_byte_pair_encoding()
+        self.tokenizer = spm.SentencePieceProcessor()
+        self.tokenizer.load(tok_file)
+
+    def get_token_count(self):
+        return self.tokenizer.get_piece_size()
+    
+    def get_embed_dim(self):
+        return None
+    
+    def generate_byte_pair_encoding(self):
+        dataset = "train"
+        tmp_file = os.path.join(self.dname, dataset+".txt")
+        print("generating tmp output text file")
+        with open(os.path.join(self.dname, dataset+".csv"), "r") as f:
+            with open(tmp_file, "w") as f2:
+                reader = csv.reader(f)
+                next(reader)
+                for row in reader:
+                    if len(row) != 2:
+                        continue
+                    for item in row:
+                        item = item.strip("\n").strip()
+                        f2.write(item + "\n")
+        print("generating byte pair encoding")           
+        spm.SentencePieceTrainer.train(
+            input=tmp_file,              # Training data file
+            model_prefix=os.path.join(self.dname, "lang_embed"),              # Output file prefix
+            vocab_size=self.vocab_size,               # Desired vocabulary size
+            character_coverage=1.0,        # Full character coverage for English
+            model_type='bpe',              # Use Byte-Pair Encoding
+            input_sentence_size=1000000,   # Use up to 1,000,000 sentences from the data
+            shuffle_input_sentence=True,   # Shuffle sentences to reduce bias
+            user_defined_symbols=Embeddings.special_toks  # Additional symbols to include
+        )
+        print("removing tmp output text file")
+        os.remove(tmp_file)
+        print("finished generating byte pair encoding")
+
+    def create_embeddings(self):
+        return None
+    
+    def get_embeddings(self, tok):
+        return None
+
+    def sentence_to_tok(self, sentence):
+        self.tokenizer.encode_as_pieces(sentence)
+
+    def get_word(self, tok):
+        return self.tokenizer.decode_ids([tok])
+
+    def get_token(self, word):
+        return self.tokenizer.piece_to_id(word)
 
 
     
 
 class Language(Dataset):
 
-    def __init__(self, dirname, inlang="de", outlang="en", flip=False):
+    def __init__(self, dirname,Embeddings=Embeddings, inlang="de", outlang="en", flip=False, byte_pair = False):
         current_file_dir = os.path.split(os.path.abspath(__file__))[0]
         dirname = os.path.join(current_file_dir,".raw_data", dirname)
+        self.byte_pair = byte_pair
         super().__init__(dirname, LanguageData)
-        self.inlang = Embeddings(os.path.join(dirname,inlang+"_custom.vec"))
-        self.outlang =  Embeddings(os.path.join(dirname,outlang+"_custom.vec"))
+        if self.byte_pair:
+            self.inlang = Embeddings(dirname, inlang)
+            self.outlang =  Embeddings(dirname, outlang)
+        else:
+            self.inlang = BytePairEmbeddings(dirname, inlang)
+            self.outlang = self.inlang
         self.flip = flip
         self.init_datasets(self.data_splits) 
 
@@ -89,6 +166,9 @@ class Language(Dataset):
             setattr(self, s + "_load", lmbload)
             setattr(self, s + "_init", lmbload)
 
+    def is_single_embeddings(self):
+        return not self.byte_pair
+    
     def decode_sentence(self, sentence, lang="outlang", as_string=True):
         if lang == "outlang":
             lang = self.outlang 
@@ -319,7 +399,7 @@ def get_language_loader(dataset, token_limit= 100, batch_size=64, shuffle=True,n
     #return DataLoader(dataset, batch_size=batch_size, num_workers = num_workers,shuffle=shuffle, worker_init_fn=worker_init_fn,collate_fn=pad_collate_fn)
     # loader = DataLoader(dataset, sampler=TokenBatchSampler(dataset, token_limit, shuffle), num_workers = num_workers, worker_init_fn=worker_init_fn,collate_fn=collate_fn)
     if device == "mps":
-        return  DataLoader(dataset, batch_size=batch_size, num_workers = num_workers,shuffle=shuffle, worker_init_fn=worker_init_fn,collate_fn=pad_collate_fn,pin_memory=True)
+        return  DataLoader(dataset, batch_size=batch_size, num_workers = num_workers//2,shuffle=shuffle, worker_init_fn=worker_init_fn,collate_fn=pad_collate_fn,pin_memory=True)
     loader = DataLoader(dataset, batch_size=batch_size, num_workers = num_workers,shuffle=shuffle, worker_init_fn=worker_init_fn,collate_fn=collate_fn_gen(token_limit),pin_memory=True)
     return loader
 
@@ -402,8 +482,8 @@ class TokenBatchSampler(Sampler[int]):
 
 if __name__ == "__main__":
 
-    dataset = Language(os.path.join("wmt","eng_to_ger"))
-    dataset.test_init()
+    dataset = Language(os.path.join("eng_to_ger"),Embeddings=BytePairEmbeddings)
+    dataset.train_init()
     print(len(dataset.test))
     d = get_language_loader(dataset.test)
     for x,y in d:

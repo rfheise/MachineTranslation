@@ -4,16 +4,16 @@ import os
 class EngToGer(Language):
 
 
-    def __init__(self):
+    def __init__(self, byte_pair = False):
         
-        super().__init__(os.path.join("wmt","ger_to_eng"),"en","de",True) 
+        super().__init__(os.path.join("wmt","ger_to_eng_byte_pair"),"en","de",True, byte_pair) 
 
 class GerToEng(Language):
 
 
-    def __init__(self):
+    def __init__(self, byte_pair = False):
         
-        super().__init__(os.path.join("wmt","ger_to_eng"),"de","en",False) 
+        super().__init__(os.path.join("wmt","ger_to_eng_byte_pair"),"de","en",False, byte_pair) 
 
 if __name__ == "__main__":
 

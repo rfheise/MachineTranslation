@@ -10,19 +10,19 @@ from .Log import Logger
 
 def eng_to_ger():
     run_id = 'tm2zle1r'
-    Logger.init_logger(wandb=True, print=True, run_id=run_id)
-    dataset = EngToGer()
+    Logger.init_logger(wandb=False, print=True, run_id=run_id)
+    dataset = EngToGer(byte_pair=True)
     loss = nn.CrossEntropyLoss(ignore_index=0)
     lr_decay_step = 15
-    lr = 2e-4
+    batch_size = 256
+    lr = 2e-4 * (256 / batch_size)
     lr_decay = .1
     epoch_start = 0
     epoch_end = lr_decay_step * 3
-    batch_size = 256
     model = TransformerBoujee(lr, lr_decay, lr_decay_step, batch_size)
     metrics = []
-    fname = "./translate/attempts/ger_mk1/model-epoch-5.pth"
-    # fname = None
+    # fname = "./translate/attempts/ger_mk1/model-epoch-5.pth"
+    fname = None
     train_model(model, dataset, loss, epoch_start, epoch_end, fname,"./translate/attempts/ger_mk1", metrics)
     search = beam_search
     # test_model(model, dataset,loss, "./translate/attempts/french.pth", search,metrics)
@@ -55,5 +55,5 @@ def eng_to_fr():
 
 
 if __name__ == "__main__":
-    #eng_to_ger()
-    eng_to_fr()
+    eng_to_ger()
+    # eng_to_fr()
