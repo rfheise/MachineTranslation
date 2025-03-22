@@ -18,7 +18,7 @@ device = Logger.device
 class Embeddings():
 
     special_toks = ["<PAD>","<SOS>", "<EOS>", "<UNK>"]
-    special_toks_val = {tok: ix for ix, tok in enumerate(special_toks)}
+    special_toks_val = None
     embedding_dim = 300
     pattern = regex.compile(r'\p{L}+|\d|[^\w\s]')
 
@@ -49,6 +49,7 @@ class Embeddings():
         self.word_to_tok = {word: ix for ix, word in enumerate(self.vocab)}
         self.tok_to_word = {ix: word for ix, word in enumerate(self.vocab)}
         self.embeddings = self.create_embeddings()
+        Embeddings.special_toks_val = {tok: ix for ix, tok in enumerate(Embeddings.special_toks)}
 
     def create_embeddings(self):
         embeddings = torch.randn((len(self.vocab), 300))
@@ -65,6 +66,13 @@ class Embeddings():
             return self.word_to_tok["<UNK>"]
         
         return self.word_to_tok[word]
+
+    def convert_row_to_tensor(self, pattern, row):
+        toks = pattern.findall(row)
+        toks = ["<SOS>",*toks, "<EOS>"]
+        toks = [int(self.get_token(tok)).to_bytes(4, byteorder='little') for tok in toks]
+        tok_bytes = b''.join(toks)
+        return tok_bytes
     
     def get_word(self, tok):
         return self.tok_to_word[int(tok)]
@@ -84,12 +92,21 @@ class BytePairEmbeddings(Embeddings):
             self.generate_byte_pair_encoding()
         self.tokenizer = spm.SentencePieceProcessor()
         self.tokenizer.load(tok_file)
+        Embeddings.special_toks_val = {ix:int(self.get_token(ix)) for ix in Embeddings.special_toks}
 
     def get_token_count(self):
         return self.tokenizer.get_piece_size()
     
     def get_embed_dim(self):
         return None
+    
+    def convert_row_to_tensor(self, pattern, row):
+        toks = row
+        # print(toks)
+        # print(self.sentence_to_tok(toks))
+        toks = [int(tok).to_bytes(4, byteorder='little') for tok in self.sentence_to_tok(toks)]
+        tok_bytes = b''.join(toks)
+        return tok_bytes
     
     def generate_byte_pair_encoding(self):
         dataset = "train"
@@ -114,7 +131,9 @@ class BytePairEmbeddings(Embeddings):
             model_type='bpe',              # Use Byte-Pair Encoding
             input_sentence_size=1000000,   # Use up to 1,000,000 sentences from the data
             shuffle_input_sentence=True,   # Shuffle sentences to reduce bias
-            user_defined_symbols=Embeddings.special_toks  # Additional symbols to include
+            user_defined_symbols=Embeddings.special_toks,  # Additional symbols to include
+            bos_piece = "<SOS>",
+            eos_piece = "<EOS>"
         )
         print("removing tmp output text file")
         os.remove(tmp_file)
@@ -127,13 +146,16 @@ class BytePairEmbeddings(Embeddings):
         return None
 
     def sentence_to_tok(self, sentence):
-        self.tokenizer.encode_as_pieces(sentence)
+        return [self.get_token(tok) for tok in self.tokenizer.encode_as_pieces(sentence)]
 
     def get_word(self, tok):
-        return self.tokenizer.decode_ids([tok])
+        return self.tokenizer.decode_ids([int(tok),])
 
     def get_token(self, word):
         return self.tokenizer.piece_to_id(word)
+    
+    def get_sentence(self, toks):
+        return self.tokenizer.decode_ids([int(tok) for tok in toks])
 
 
     
@@ -174,6 +196,10 @@ class Language(Dataset):
             lang = self.outlang 
         else:
             lang = self.inlang 
+        try:
+            return "".join(lang.get_sentence(sentence))
+        except:
+            pass
         toks = []
         for tok in sentence:
             word = lang.get_word(tok)
@@ -297,11 +323,8 @@ class LanguageData(Data):
 
     @staticmethod
     def convert_row_to_tensor(pattern, row, lang):
-        toks = pattern.findall(row)
-        toks = ["<SOS>",*toks, "<EOS>"]
-        toks = [int(lang.get_token(tok)).to_bytes(4, byteorder='little') for tok in toks]
-        tok_bytes = b''.join(toks)
-        return tok_bytes
+        return lang.convert_row_to_tensor(pattern, row)
+        
 
     def __len__(self):
         if self.conn is None:

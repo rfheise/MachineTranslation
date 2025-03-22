@@ -11,7 +11,7 @@ from ..Search.Search import greedy_search, beam_search
 import random 
 from ..Log import Logger
 import collections
-
+import sys
 device = Logger.device
 
 
@@ -20,7 +20,7 @@ class Transformer(nn.Module):
     def __init__(self, embed_dim, num_tokens_in, num_tokens_out, single_embed=False):
         super().__init__()
 
-        self.transformer = nn.Transformer(d_model = embed_dim,batch_first=True, nhead=8, num_encoder_layers=6, num_decoder_layers=6)
+        self.transformer = nn.Transformer(d_model = embed_dim,batch_first=True, nhead=8, num_encoder_layers=6, num_decoder_layers=6, norm_first= True)
         self.linear = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
             nn.ReLU(),
@@ -36,13 +36,13 @@ class Transformer(nn.Module):
     
     def set_out_lang_embeddings(self, out_lang_embeddings):
         if not out_lang_embeddings:
-            print("Out Lang Embeddings Are Empty")
+            print("Warning: Out Lang Embeddings Are Empty", file=sys.stderr)
             return 
         self.out_lang_embeddings = nn.Embedding.from_pretrained(out_lang_embeddings, freeze=False).to(device)
     
     def set_in_lang_embeddings(self, in_lang_embeddings):
         if not in_lang_embeddings:
-            print("In Lang Embeddings Are Empty")
+            print("Warning: In Lang Embeddings Are Empty",file=sys.stderr)
             return 
         self.in_lang_embeddings = nn.Embedding.from_pretrained(in_lang_embeddings, freeze=False).to(device)
 
@@ -61,7 +61,7 @@ class Transformer(nn.Module):
 
 class TransformerBoujee(Model):
     
-    def __init__(self, lr, lr_decay, lr_step, batch_size):
+    def __init__(self, lr, lr_decay, lr_step, batch_size, total_epochs):
         super().__init__()
         self.lr = lr 
         self.lr_decay = lr_decay 
@@ -70,6 +70,7 @@ class TransformerBoujee(Model):
         self.transformer = None 
         self.use_scaler = (device == "cuda")
         self.embed_dim = 512
+        self.total_epochs = total_epochs
         if self.use_scaler:
             torch.backends.cudnn.benchmark = True
             torch.set_float32_matmul_precision('high')
@@ -80,6 +81,7 @@ class TransformerBoujee(Model):
         
         dataset.train_init()
         loader = get_language_loader(dataset.train, batch_size=self.batch_size, shuffle=True)
+        self.len_loader = len(loader)
         self.lazy_init(dataset)
         self.transformer.train()
         l_avg = Avg("Loss")
@@ -101,16 +103,19 @@ class TransformerBoujee(Model):
                 l = loss(out, target)
                 l.backward()
                 self.optim.step()
+                torch.nn.utils.clip_grad_norm_(self.transformer.parameters(), max_norm=1.0)
             else:
                 with torch.amp.autocast(device_type=device):
                     out = self.transformer(X,decoder_input, mask).transpose(1,2)
                     l = loss(out, target)
                 self.scaler.scale(l).backward()
+                self.scaler.unscale_(self.optim)
+                torch.nn.utils.clip_grad_norm_(self.transformer.parameters(), max_norm=1.0)
                 self.scaler.step(self.optim)
                 self.scaler.update()
             acc.compute_score(out.detach().argmax(dim=1), target.detach())
             l_avg.compute_score(l.detach())
-        self.scheduler.step() 
+            self.scheduler.step()    
 
         ref = dataset.decode_sentence(X[1].detach().cpu(), "inlang")
         out_sentence = dataset.decode_sentence(Y[1].detach().cpu())
@@ -151,7 +156,8 @@ class TransformerBoujee(Model):
             if self.use_scaler:
                 self.transformer = torch.compile(self.transformer)
             self.optim = torch.optim.Adam(self.transformer.parameters(), lr=self.lr)
-            self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, self.lr_step, gamma=self.lr_decay)
+            # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, self.lr_step, gamma=self.lr_decay)
+            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optim,max_lr=self.lr,epochs=self.total_epochs,steps_per_epoch=self.len_loader,pct_start=0.3,anneal_strategy='cos',cycle_momentum=False)
             if self.use_scaler:
                 self.scaler = torch.amp.GradScaler()
             else:
@@ -253,7 +259,8 @@ class TransformerBoujee(Model):
         self.transformer.out_lang_embeddings.load_state_dict(state_dicts["outlang_embed"])
         self.optim = torch.optim.Adam(self.transformer.parameters(), lr = self.lr)
         self.optim.load_state_dict(state_dicts["optim"])
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, self.lr_step, gamma=self.lr_decay, last_epoch=state_dicts["epoch"])
+        self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optim,max_lr=self.lr,epochs=self.total_epochs,steps_per_epoch=self.len_loader,pct_start=0.3,anneal_strategy='cos',cycle_momentum=False, last_epoch=state_dicts["epoch"])
+        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, self.lr_step, gamma=self.lr_decay, last_epoch=state_dicts["epoch"])
         if self.use_scaler:
             self.scaler = torch.amp.GradScaler()
             self.scaler.load_state_dict(state_dicts["scaler"])
@@ -295,3 +302,5 @@ class TransformerBoujee(Model):
             else:
                 new_state_dict[key] = value
         return new_state_dict
+
+
