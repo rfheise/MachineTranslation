@@ -10,7 +10,7 @@ from .Log import Logger
 from .Dataset.Language import Embeddings
 
 def eng_to_ger():
-    run_id = 'ww8nd8id'
+    run_id = 'ww8nd9id'
     Logger.init_logger(wandb=True, print=True, run_id=run_id)
     dataset = EngToGer(byte_pair=True)
     print(Embeddings.special_toks_val["<SOS>"])
@@ -21,7 +21,7 @@ def eng_to_ger():
     lr_decay = .1
     epoch_start = 0
     # epoch_end = lr_decay_step * 3
-    epoch_end = 10
+    epoch_end = 50
     model = TransformerBoujee(lr, lr_decay, lr_decay_step, batch_size, epoch_end - epoch_start + 1)
     metrics = []
     # fname = "./translate/attempts/ger_mk1/model-epoch-5.pth"
